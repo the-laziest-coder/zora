@@ -183,6 +183,8 @@ class Runner:
             action='Bridge'
         )
 
+        return Status.SUCCESS
+
     @runner_func('Check already minted')
     def is_already(self, w3):
         contract = w3.eth.contract(RAINBOW_ZORB_ADDRESS, abi=ZORA_ERC721_ABI)

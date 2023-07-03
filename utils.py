@@ -36,7 +36,9 @@ def to_bytes(hex_str):
 
 
 class InsufficientFundsException(Exception):
-    pass
+
+    def __init__(self, prefix=''):
+        super().__init__(prefix + 'Insufficient funds')
 
 
 def send_tx(w3, private_key, tx, verify_func, action):
