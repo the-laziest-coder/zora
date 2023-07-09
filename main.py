@@ -106,7 +106,7 @@ class Status(Enum):
 
 class Runner:
 
-    def __init__(self, private_key, proxy):
+    def __init__(self, private_key, proxy, nft_address):
         if proxy is not None and len(proxy) > 4 and proxy[:4] != 'http':
             proxy = 'http://' + proxy
         self.proxy = proxy
@@ -115,6 +115,8 @@ class Runner:
 
         self.private_key = private_key
         self.address = Account().from_key(private_key).address
+
+        self.nft_address = nft_address
 
     def w3(self, chain):
         return self.w3s[chain]
@@ -185,30 +187,51 @@ class Runner:
 
         return Status.SUCCESS
 
-    @runner_func('Check already minted')
-    def is_already(self, w3):
-        contract = w3.eth.contract(RAINBOW_ZORB_ADDRESS, abi=ZORA_ERC721_ABI)
-        return contract.functions.balanceOf(self.address).call() > 0
+    def mint_erc721(self, w3, cnt):
+        contract = w3.eth.contract(self.nft_address, abi=ZORA_ERC721_ABI)
 
-    @runner_func('Mint ERC721')
-    def mint_erc721(self, cnt):
-        w3 = self.w3('Zora')
-
-        if self.is_already(w3):
+        if contract.functions.balanceOf(self.address).call() > 0:
             return Status.ALREADY
-
-        contract = w3.eth.contract(RAINBOW_ZORB_ADDRESS, abi=ZORA_ERC721_ABI)
 
         value = contract.functions.zoraFeeForAmount(cnt).call()[1]
 
         self.build_and_send_tx(
             w3,
             contract.functions.purchase(cnt),
-            action='Mint',
+            action='Mint ERC721',
             value=value,
         )
 
         return Status.SUCCESS
+
+    def mint_erc1155(self, w3, cnt):
+        contract = w3.eth.contract(self.nft_address, abi=ZORA_ERC1155_ABI)
+
+        if contract.functions.balanceOf(self.address, TOKEN_ID).call() > 0:
+            return Status.ALREADY
+
+        value = contract.functions.mintFee().call() * cnt
+
+        bs = '0x' + ('0' * 24) + self.address.lower()[2:]
+        args = (MINTER_ADDRESS, TOKEN_ID, cnt, to_bytes(bs))
+
+        self.build_and_send_tx(
+            w3,
+            contract.functions.mint(*args),
+            action='Mint ERC1155',
+            value=value,
+        )
+
+        return Status.SUCCESS
+
+    @runner_func('Mint')
+    def mint(self, cnt):
+        w3 = self.w3('Zora')
+
+        if NFT_STANDARD == 'ERC721':
+            return self.mint_erc721(w3, cnt)
+        else:
+            return self.mint_erc1155(w3, cnt)
 
     def run(self):
         logger.print(self.address)
@@ -216,18 +239,18 @@ class Runner:
         if MODE == 0:
             return self.bridge()
         elif MODE == 1:
-            return self.mint_erc721(1)
+            return self.mint(1)
         elif MODE == 2:
 
             try:
-                return self.mint_erc721(1)
+                return self.mint(1)
             except InsufficientFundsException:
                 logger.print('Insufficient funds to mint. Let\'s bridge')
 
             init_balance = self.get_native_balance('Zora')
             self.bridge()
             self.wait_for_bridge(init_balance)
-            return self.mint_erc721(1)
+            return self.mint(1)
 
         return Status.SUCCESS
 
@@ -313,6 +336,8 @@ def main():
     queue = list(zip(wallets, proxies))
     random.shuffle(queue)
 
+    nft_address = Web3.to_checksum_address(NFT_ADDRESS)
+
     idx, runs_count = 0, len(queue)
 
     while len(queue) != 0:
@@ -329,7 +354,7 @@ def main():
         else:
             key = wallet.split(';')[1]
 
-        runner = Runner(key, proxy)
+        runner = Runner(key, proxy, nft_address)
 
         address = runner.address
 

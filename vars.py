@@ -57,7 +57,7 @@ ZORA_BRIDGE_GAS_LIMIT = 100000
 ZORA_BRIDGE_ADDRESS = '0x1a0ad011913A150f69f6A19DF447A0CfD9551054'
 ZORA_BRIDGE_ABI = json.load(open('abi/zora_bridge.json'))
 
-RAINBOW_ZORB_ADDRESS = '0x12e4527e2807978A49469f8D757abF5E07b32b8F'
 ZORA_ERC721_ABI = json.load(open('abi/zora_erc721.json'))
+ZORA_ERC1155_ABI = json.load(open('abi/zora_erc_1155.json'))
 
 ZORA_GWEI = 1.5
