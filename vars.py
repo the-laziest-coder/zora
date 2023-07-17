@@ -60,4 +60,7 @@ ZORA_BRIDGE_ABI = json.load(open('abi/zora_bridge.json'))
 ZORA_ERC721_ABI = json.load(open('abi/zora_erc721.json'))
 ZORA_ERC1155_ABI = json.load(open('abi/zora_erc_1155.json'))
 
+ZORA_MINTER_ADDRESS = '0x169d9147dFc9409AfA4E558dF2C9ABeebc020182'
+ZORA_MINTER_ABI = json.load(open('abi/zora_minter.json'))
+
 ZORA_GWEI = 1.5

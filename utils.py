@@ -1,6 +1,6 @@
 import requests
 from web3 import Web3
-from config import RPCs
+from config import RPCs, ZORA_LOW_GAS
 from vars import CHAIN_NAMES, EIP1559_CHAINS, ZORA_GWEI
 
 
@@ -52,7 +52,7 @@ def send_tx(w3, private_key, tx, verify_func, action):
 
         return tx_hash
     except Exception as e:
-        if 'insufficient funds' in str(e):
+        if 'insufficient funds' in str(e) or 'gas required exceeds allowance' in str(e):
             raise InsufficientFundsException()
         raise e
 
@@ -69,16 +69,19 @@ def build_and_send_tx(w3, address, private_key, func, value, verify_func, action
 
     if chain in EIP1559_CHAINS:
         if chain == 'Zora':
-            gas_price = Web3.to_wei(ZORA_GWEI, 'gwei')
-            tx_data['maxPriorityFeePerGas'] = gas_price
-            tx_data['maxFeePerGas'] = gas_price + int(w3.eth.get_block("latest")["baseFeePerGas"] * 1.2)
+            if ZORA_LOW_GAS:
+                tx_data['gasPrice'] = 50000000
+            else:
+                gas_price = Web3.to_wei(ZORA_GWEI, 'gwei')
+                tx_data['maxPriorityFeePerGas'] = gas_price
+                tx_data['maxFeePerGas'] = gas_price + int(w3.eth.get_block("latest")["baseFeePerGas"] * 1.2)
     else:
         tx_data['gasPrice'] = gas_price
 
     try:
         tx = func.build_transaction(tx_data)
     except Exception as e:
-        if 'insufficient funds' in str(e):
+        if 'insufficient funds' in str(e) or 'gas required exceeds allowance' in str(e):
             raise InsufficientFundsException()
         raise e
 

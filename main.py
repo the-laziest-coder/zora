@@ -144,7 +144,9 @@ class Runner:
     def wait_for_eth_gas_price(cls, w3):
         t = 0
         while w3.eth.gas_price > Web3.to_wei(MAX_ETH_GAS_PRICE, 'gwei'):
-            logger.print(f'Gas price is too high. Waiting for {WAIT_GAS_TIME}s')
+            gas_price = int_to_decimal(w3.eth.gas_price, 9)
+            gas_price = round(gas_price, 2)
+            logger.print(f'Gas price is too high - {gas_price}. Waiting for {WAIT_GAS_TIME}s')
             t += WAIT_GAS_TIME
             if t >= TOTAL_WAIT_GAS_TIME:
                 break
@@ -193,7 +195,9 @@ class Runner:
         if contract.functions.balanceOf(self.address).call() > 0:
             return Status.ALREADY
 
-        value = contract.functions.zoraFeeForAmount(cnt).call()[1]
+        price = contract.functions.salesConfig().call()[0]
+
+        value = contract.functions.zoraFeeForAmount(cnt).call()[1] + price * cnt
 
         self.build_and_send_tx(
             w3,
@@ -210,10 +214,15 @@ class Runner:
         if contract.functions.balanceOf(self.address, TOKEN_ID).call() > 0:
             return Status.ALREADY
 
-        value = contract.functions.mintFee().call() * cnt
+        minter = w3.eth.contract(ZORA_MINTER_ADDRESS, abi=ZORA_MINTER_ABI)
+
+        sale_config = minter.functions.sale(self.nft_address, TOKEN_ID).call()
+        price = sale_config[3]
+
+        value = (contract.functions.mintFee().call() + price) * cnt
 
         bs = '0x' + ('0' * 24) + self.address.lower()[2:]
-        args = (MINTER_ADDRESS, TOKEN_ID, cnt, to_bytes(bs))
+        args = (ZORA_MINTER_ADDRESS, TOKEN_ID, cnt, to_bytes(bs))
 
         self.build_and_send_tx(
             w3,
@@ -225,13 +234,13 @@ class Runner:
         return Status.SUCCESS
 
     @runner_func('Mint')
-    def mint(self, cnt):
+    def mint(self):
         w3 = self.w3('Zora')
 
         if NFT_STANDARD == 'ERC721':
-            return self.mint_erc721(w3, cnt)
+            return self.mint_erc721(w3, MINT_COUNT)
         else:
-            return self.mint_erc1155(w3, cnt)
+            return self.mint_erc1155(w3, MINT_COUNT)
 
     def run(self):
         logger.print(self.address)
@@ -239,18 +248,18 @@ class Runner:
         if MODE == 0:
             return self.bridge()
         elif MODE == 1:
-            return self.mint(1)
+            return self.mint()
         elif MODE == 2:
 
             try:
-                return self.mint(1)
+                return self.mint()
             except InsufficientFundsException:
                 logger.print('Insufficient funds to mint. Let\'s bridge')
 
             init_balance = self.get_native_balance('Zora')
             self.bridge()
             self.wait_for_bridge(init_balance)
-            return self.mint(1)
+            return self.mint()
 
         return Status.SUCCESS
 
