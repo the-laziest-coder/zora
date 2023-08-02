@@ -259,6 +259,7 @@ class Runner:
             init_balance = self.get_native_balance('Zora')
             self.bridge()
             self.wait_for_bridge(init_balance)
+            wait_next_tx()
             return self.mint()
 
         return Status.SUCCESS
