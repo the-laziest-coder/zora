@@ -285,7 +285,7 @@ class Runner:
 
     @runner_func('Upload IPFS')
     def upload_ipfs(self, name):
-        img_szs = [i for i in range(250, 651, 50)]
+        img_szs = [i for i in range(500, 1001, 50)]
         url = f'https://picsum.photos/{random.choice(img_szs)}/{random.choice(img_szs)}'
         resp = requests.get(url)
         if resp.status_code != 200:
