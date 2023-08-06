@@ -57,7 +57,7 @@ class Logger:
         if self.to_file:
             file = filename if filename != '' else self.default_file
             if file != '':
-                with open(file, 'a') as f:
+                with open(file, 'a', encoding='utf-8') as f:
                     f.write(f'{message}\n')
         if bot is not None and (send_tg or store_tg):
             self.tg_stored_messages.append(message)

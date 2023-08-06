@@ -1,7 +1,7 @@
 import requests
 from web3 import Web3
 from config import RPCs, ZORA_LOW_GAS
-from vars import CHAIN_NAMES, EIP1559_CHAINS, ZORA_GWEI
+from vars import CHAIN_NAMES, EIP1559_CHAINS
 
 
 def get_coin_price(coin, currency):
@@ -67,14 +67,17 @@ def build_and_send_tx(w3, address, private_key, func, value, verify_func, action
     gas_price = w3.eth.gas_price
     chain = get_chain(w3)
 
+    max_priority_fee, max_fee_per_gas = None, None
     if chain in EIP1559_CHAINS:
-        if chain == 'Zora':
-            if ZORA_LOW_GAS:
-                tx_data['gasPrice'] = 50000000
-            else:
-                gas_price = Web3.to_wei(ZORA_GWEI, 'gwei')
-                tx_data['maxPriorityFeePerGas'] = gas_price
-                tx_data['maxFeePerGas'] = gas_price + int(w3.eth.get_block("latest")["baseFeePerGas"] * 1.2)
+        if chain == 'Zora' and ZORA_LOW_GAS:
+            max_priority_fee, max_fee_per_gas = 5000000, 5000000
+        else:
+            max_priority_fee = w3.eth.max_priority_fee
+            max_fee_per_gas = max_priority_fee + int(w3.eth.get_block("latest")["baseFeePerGas"] * 1.2)
+
+    if max_priority_fee and max_fee_per_gas:
+        tx_data['maxPriorityFeePerGas'] = max_priority_fee
+        tx_data['maxFeePerGas'] = max_fee_per_gas
     else:
         tx_data['gasPrice'] = gas_price
 
