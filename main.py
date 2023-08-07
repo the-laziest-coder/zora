@@ -289,9 +289,10 @@ class Runner:
 
     @runner_func('Upload IPFS')
     def upload_ipfs(self, name):
+        proxies = {'http': self.proxy, 'https': self.proxy} if self.proxy and self.proxy != '' else {}
         img_szs = [i for i in range(500, 1001, 50)]
         url = f'https://picsum.photos/{random.choice(img_szs)}/{random.choice(img_szs)}'
-        resp = requests.get(url)
+        resp = requests.get(url, proxies=proxies, timeout=60)
         if resp.status_code != 200:
             raise Exception(f'Get random image failed, status_code = {resp.status_code}, response = {resp.text}')
         filename = name.replace(' ', '_').lower() + '.jpg'
@@ -300,7 +301,6 @@ class Runner:
         }
         boundary = '------WebKitFormBoundary' + ''.join(random.sample(string.ascii_letters + string.digits, 16))
         m = MultipartEncoder(fields=fields, boundary=boundary)
-        proxies = {'http': self.proxy, 'https': self.proxy} if self.proxy and self.proxy != '' else {}
         resp = requests.post('https://ipfs-uploader.zora.co/api/v0/add?'
                              'stream-channels=true&cid-version=1&progress=false',
                              data=m, headers={'content-type': m.content_type}, proxies=proxies, timeout=60)
@@ -452,6 +452,7 @@ def main():
     while len(queue) != 0:
 
         if idx != 0:
+            logger.send_tg_stored()
             wait_next_run(idx, runs_count)
 
         account = queue.pop(0)
@@ -466,7 +467,12 @@ def main():
         address = Account().from_key(key).address
         logger.print(address)
 
-        runner = Runner(key, proxy)
+        try:
+            runner = Runner(key, proxy)
+        except Exception as e:
+            handle_traceback()
+            logger.print(f'Failed to init: {str(e)}', color='red')
+            continue
 
         modules = copy.deepcopy(MODULES)
         modules = [m.capitalize() for m in modules]
@@ -506,8 +512,6 @@ def main():
             except Exception as e:
                 handle_traceback()
                 logger.print(f'{module} failed: {str(e)}', color='red')
-
-        logger.send_tg_stored()
 
         with open(f'{results_path}/report.csv', 'w', encoding='utf-8', newline='') as file:
             writer = csv.writer(file)
