@@ -1,3 +1,4 @@
+colorama==0.4.6
 eth_account==0.9.0
 pyTelegramBotAPI==4.12.0
 Requests==2.31.0

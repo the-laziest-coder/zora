@@ -1,6 +1,7 @@
 import requests
+from retry import retry
 from web3 import Web3
-from config import RPCs, ZORA_LOW_GAS
+from config import RPCs, ZORA_LOW_GAS, MAX_TRIES
 from vars import CHAIN_NAMES, EIP1559_CHAINS
 
 
@@ -20,6 +21,7 @@ class Web3WithChain(Web3):
         self.current_chain_id = current_chain_id
 
 
+@retry(tries=MAX_TRIES, delay=1.5, backoff=2, jitter=(0, 1))
 def get_w3(chain, proxy=None):
     req_args = {} if proxy is None or proxy == '' else {
         'proxies': {'https': proxy, 'http': proxy},

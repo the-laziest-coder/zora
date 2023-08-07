@@ -5,6 +5,7 @@ import csv
 import random
 import time
 import traceback
+import colorama
 import web3.exceptions
 
 from termcolor import cprint
@@ -19,6 +20,9 @@ from logger import Logger, get_telegram_bot_chat_id
 from utils import *
 from config import *
 from vars import *
+
+
+colorama.init()
 
 date_path = datetime.now().strftime('%d-%m-%Y-%H-%M-%S')
 results_path = 'results/' + date_path
@@ -440,8 +444,8 @@ def main():
         else:
             key = wallet.split(';')[1]
 
-        runner = Runner(key, proxy)
-        stats[runner.address] = {'Zora': 0, 'Optimism': 0, 'Ethereum': 0, 'Created': 0}
+        address = Account().from_key(key).address
+        stats[address] = {'Zora': 0, 'Optimism': 0, 'Ethereum': 0, 'Created': 0}
 
     random.shuffle(queue)
 
