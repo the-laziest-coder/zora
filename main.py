@@ -463,10 +463,10 @@ def main():
         else:
             key = wallet.split(';')[1]
 
-        runner = Runner(key, proxy)
-        address = runner.address
-
+        address = Account().from_key(key).address
         logger.print(address)
+
+        runner = Runner(key, proxy)
 
         modules = copy.deepcopy(MODULES)
         modules = [m.capitalize() for m in modules]
