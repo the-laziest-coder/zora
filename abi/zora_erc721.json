@@ -1327,6 +1327,34 @@
     {
         "inputs": [
             {
+                "internalType": "address",
+                "name": "recipient",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "quantity",
+                "type": "uint256"
+            },
+            {
+                "internalType": "string",
+                "name": "comment",
+                "type": "string"
+            },
+            {
+                "internalType": "address",
+                "name": "mintReferral",
+                "type": "address"
+            }
+        ],
+        "name": "mintWithRewards",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint256",
                 "name": "quantity",
                 "type": "uint256"

@@ -1,7 +1,7 @@
 import requests
 from retry import retry
 from web3 import Web3
-from config import RPCs, ZORA_LOW_GAS, MAX_TRIES
+from config import RPCs, ZORA_LOW_GAS, BASE_LOW_GAS, MAX_TRIES
 from vars import CHAIN_NAMES, EIP1559_CHAINS
 
 
@@ -39,27 +39,31 @@ def to_bytes(hex_str):
 
 class InsufficientFundsException(Exception):
 
-    def __init__(self, prefix=''):
+    def __init__(self, prefix='', chain=None):
         super().__init__(prefix + 'Insufficient funds')
+        self.chain = chain
 
 
-def send_tx(w3, private_key, tx, verify_func, action):
+def send_tx(w3, private_key, tx, verify_func, action, tx_change_func=None):
     try:
         estimate = w3.eth.estimate_gas(tx)
         tx['gas'] = int(estimate * 1.2)
+
+        if tx_change_func:
+            tx_change_func(tx)
 
         signed_tx = w3.eth.account.sign_transaction(tx, private_key)
         tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
         verify_func(get_chain(w3), tx_hash, action=action)
 
-        return tx_hash
+        return tx_hash.hex()
     except Exception as e:
         if 'insufficient funds' in str(e) or 'gas required exceeds allowance' in str(e):
-            raise InsufficientFundsException()
+            raise InsufficientFundsException(chain=get_chain(w3))
         raise e
 
 
-def build_and_send_tx(w3, address, private_key, func, value, verify_func, action):
+def build_and_send_tx(w3, address, private_key, func, value, verify_func, action, tx_change_func=None):
     tx_data = {
         'from': address,
         'nonce': w3.eth.get_transaction_count(address),
@@ -71,7 +75,7 @@ def build_and_send_tx(w3, address, private_key, func, value, verify_func, action
 
     max_priority_fee, max_fee_per_gas = None, None
     if chain in EIP1559_CHAINS:
-        if chain == 'Zora' and ZORA_LOW_GAS:
+        if (chain == 'Zora' and ZORA_LOW_GAS) or (chain == 'Base' and BASE_LOW_GAS):
             max_priority_fee, max_fee_per_gas = 5000000, 5000000
         else:
             max_priority_fee = w3.eth.max_priority_fee
@@ -87,7 +91,7 @@ def build_and_send_tx(w3, address, private_key, func, value, verify_func, action
         tx = func.build_transaction(tx_data)
     except Exception as e:
         if 'insufficient funds' in str(e) or 'gas required exceeds allowance' in str(e):
-            raise InsufficientFundsException()
+            raise InsufficientFundsException(chain=chain)
         raise e
 
-    return send_tx(w3, private_key, tx, verify_func, action)
+    return send_tx(w3, private_key, tx, verify_func, action, tx_change_func=tx_change_func)

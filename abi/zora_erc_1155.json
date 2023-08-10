@@ -1486,6 +1486,39 @@
         "type": "function"
     },
     {
+        "inputs": [
+            {
+                "internalType": "contract IMinter1155",
+                "name": "minter",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "quantity",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bytes",
+                "name": "minterArguments",
+                "type": "bytes"
+            },
+            {
+                "internalType": "address",
+                "name": "mintReferral",
+                "type": "address"
+            }
+        ],
+        "name": "mintWithRewards",
+        "stateMutability": "payable",
+        "outputs": [],
+        "type": "function"
+    },
+    {
         "inputs": [],
         "name": "mintFee",
         "outputs": [
