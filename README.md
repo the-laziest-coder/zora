@@ -1,7 +1,12 @@
-# Zora bridge + mint
+# Zora Ultimate Soft
 
  - [Bridge from Ethereum to Zora](https://bridge.zora.energy/)
- - [Mint Rainbow Zorb Energy](https://zora.co/collect/zora:0x12e4527e2807978a49469f8d757abf5e07b32b8f)
+ - Mint any NFT from your own list
+ - Earn mint.fun points
+ - Create collections
+ - Update collections
+
+### Follow: https://t.me/timfamecode
 
 ### Settings
 `files/wallets.txt` - Wallets with private keys \
