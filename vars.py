@@ -62,6 +62,7 @@ ZORA_BRIDGE_ABI = json.load(open('abi/zora_bridge.json'))
 
 ZORA_ERC721_ABI = json.load(open('abi/zora_erc721.json'))
 ZORA_ERC1155_ABI = json.load(open('abi/zora_erc_1155.json'))
+CUSTOM_ERC721_ABI = json.load(open('abi/custom_erc721.json'))
 
 MINTER_ADDRESSES = {
     'Ethereum': '0x8A1DBE9b1CeB1d17f92Bebf10216FCFAb5C3fbA7',

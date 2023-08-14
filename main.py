@@ -243,23 +243,22 @@ class Runner:
         if self.with_mint_fun:
             tx['data'] = tx['data'] + MINT_FUN_DATA_SUFFIX
 
-    def _mint_erc721(self, w3, nft_address, cnt, with_rewards=True):
+    def _mint_erc721(self, w3, nft_address, with_rewards=True):
         contract = w3.eth.contract(nft_address, abi=ZORA_ERC721_ABI)
 
         balance = contract.functions.balanceOf(self.address).call()
-        if balance >= cnt:
+        if balance >= MAX_NFT_PER_ADDRESS:
             return Status.ALREADY, None
-        cnt -= balance
 
         price = contract.functions.salesConfig().call()[0]
 
-        value = contract.functions.zoraFeeForAmount(cnt).call()[1] + price * cnt
+        value = contract.functions.zoraFeeForAmount(1).call()[1] + price
 
         if with_rewards:
-            args = (self.address, cnt, '', MINT_REFERRAL_ADDRESSES[get_chain(w3)])
+            args = (self.address, 1, '', MINT_REFERRAL_ADDRESSES[get_chain(w3)])
             func = contract.functions.mintWithRewards
         else:
-            args = (cnt,)
+            args = (1,)
             func = contract.functions.purchase
 
         tx_hash = self.build_and_send_tx(
@@ -273,22 +272,21 @@ class Runner:
         return Status.SUCCESS, tx_hash
 
     @runner_func('Mint ERC721')
-    def mint_erc721(self, w3, nft_address, cnt):
+    def mint_erc721(self, w3, nft_address):
         try:
-            return self._mint_erc721(w3, nft_address, cnt)
+            return self._mint_erc721(w3, nft_address)
         except web3.exceptions.ContractLogicError as e:
             if 'execution reverted' in str(e):
-                return self._mint_erc721(w3, nft_address, cnt, with_rewards=False)
+                return self._mint_erc721(w3, nft_address, with_rewards=False)
             else:
                 raise e
 
-    def _mint_erc1155(self, w3, nft_address, token_id, cnt, with_rewards=True):
+    def _mint_erc1155(self, w3, nft_address, token_id, with_rewards=True):
         contract = w3.eth.contract(nft_address, abi=ZORA_ERC1155_ABI)
 
         balance = contract.functions.balanceOf(self.address, token_id).call()
-        if balance >= cnt:
+        if balance >= MAX_NFT_PER_ADDRESS:
             return Status.ALREADY, None
-        cnt -= balance
 
         minter_address = MINTER_ADDRESSES[get_chain(w3)]
 
@@ -297,15 +295,15 @@ class Runner:
         sale_config = minter.functions.sale(nft_address, token_id).call()
         price = sale_config[3]
 
-        value = (contract.functions.mintFee().call() + price) * cnt
+        value = contract.functions.mintFee().call() + price
 
         bs = '0x' + ('0' * 24) + self.address.lower()[2:]
 
         if with_rewards:
-            args = (minter_address, token_id, cnt, to_bytes(bs), MINT_REFERRAL_ADDRESSES[get_chain(w3)])
+            args = (minter_address, token_id, 1, to_bytes(bs), MINT_REFERRAL_ADDRESSES[get_chain(w3)])
             func = contract.functions.mintWithRewards
         else:
-            args = (minter_address, token_id, cnt, to_bytes(bs))
+            args = (minter_address, token_id, 1, to_bytes(bs))
             func = contract.functions.mint
 
         tx_hash = self.build_and_send_tx(
@@ -319,14 +317,36 @@ class Runner:
         return Status.SUCCESS, tx_hash
 
     @runner_func('Mint ERC1155')
-    def mint_erc1155(self, w3, nft_address, token_id, cnt):
+    def mint_erc1155(self, w3, nft_address, token_id):
         try:
-            return self._mint_erc1155(w3, nft_address, token_id, cnt)
+            return self._mint_erc1155(w3, nft_address, token_id)
         except web3.exceptions.ContractLogicError as e:
             if 'execution reverted' in str(e):
-                return self._mint_erc1155(w3, nft_address, token_id, cnt, with_rewards=False)
+                return self._mint_erc1155(w3, nft_address, token_id, with_rewards=False)
             else:
                 raise e
+
+    @runner_func('Mint Custom')
+    def mint_custom(self, w3, nft_info):
+        nft_address, cnt, price = tuple(nft_info.split(':'))
+        cnt = int(cnt)
+        price = decimal_to_int(float(price), NATIVE_DECIMALS)
+
+        contract = w3.eth.contract(nft_address, abi=CUSTOM_ERC721_ABI)
+
+        balance = contract.functions.balanceOf(self.address).call()
+        if balance >= (cnt * MAX_NFT_PER_ADDRESS):
+            return Status.ALREADY, None
+
+        tx_hash = self.build_and_send_tx(
+            w3,
+            contract.functions.mint(cnt),
+            action='Mint Custom',
+            value=price,
+            tx_change_func=self.mint_fun_tx_change,
+        )
+
+        return Status.SUCCESS, tx_hash
 
     @runner_func('Mint.fun submit')
     def mint_fun_submit(self, chain, tx_hash):
@@ -342,15 +362,16 @@ class Runner:
         }, headers=get_default_mint_fun_headers(self.address), proxies=self.http_proxies)
 
     def _mint(self, nft):
-        cnt = 1
         chain, nft_address, token_id = nft
         w3 = self.w3(chain)
         logger.print(f'Starting mint: {chain} - {nft_address}')
 
         if token_id is None:
-            status, tx_hash = self.mint_erc721(w3, nft_address, cnt)
+            status, tx_hash = self.mint_erc721(w3, nft_address)
+        elif token_id == 'custom':
+            status, tx_hash = self.mint_custom(w3, nft_address)
         else:
-            status, tx_hash = self.mint_erc1155(w3, nft_address, token_id, cnt)
+            status, tx_hash = self.mint_erc1155(w3, nft_address, token_id)
 
         if status == Status.SUCCESS and tx_hash:
             try:
@@ -638,6 +659,17 @@ def main():
     queue = list(zip(wallets, proxies))
     mints = []
     for link in mint_links:
+        if link.startswith('custom'):
+            chain = link.split(':')[1]
+            token_id = 'custom'
+            nft_info = link[7 + len(chain) + 1:]
+            chain = ZORA_CHAINS_MAP[chain]
+            if chain not in MINT_CHAINS:
+                continue
+            mints.append((chain, nft_info, token_id))
+            continue
+        if MINT_ONLY_CUSTOM:
+            continue
         if link.startswith('https://'):
             link = link[8:]
         if link.startswith('zora.co/collect/'):
