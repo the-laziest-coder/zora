@@ -21,7 +21,6 @@ from utils import *
 from config import *
 from vars import *
 
-
 colorama.init()
 
 date_path = datetime.now().strftime('%d-%m-%Y-%H-%M-%S')
@@ -62,6 +61,7 @@ def _delay(r, *args, **kwargs):
 
 
 address2ua = {}
+auto_bridged_cnt_by_address = {}
 
 
 def get_default_mint_fun_headers(address):
@@ -190,10 +190,11 @@ class Runner:
         return build_and_send_tx(w3, self.address, self.private_key, func, value, self.tx_verification, action,
                                  tx_change_func=tx_change_func)
 
-    @classmethod
-    def wait_for_eth_gas_price(cls, w3):
+    def wait_for_eth_gas_price(self, current_w3):
+        w3 = self.w3('Ethereum')
+        max_eth_gas_price = MAX_ETH_GAS_PRICE if get_chain(current_w3) == 'Ethereum' else MAX_ETH_GAS_PRICE_FOR_L2
         t = 0
-        while w3.eth.gas_price > Web3.to_wei(MAX_ETH_GAS_PRICE, 'gwei'):
+        while w3.eth.gas_price > Web3.to_wei(max_eth_gas_price, 'gwei'):
             gas_price = int_to_decimal(w3.eth.gas_price, 9)
             gas_price = round(gas_price, 2)
             logger.print(f'Gas price is too high - {gas_price}. Waiting for {WAIT_GAS_TIME}s')
@@ -202,7 +203,7 @@ class Runner:
                 break
             time.sleep(WAIT_GAS_TIME)
 
-        if w3.eth.gas_price > Web3.to_wei(MAX_ETH_GAS_PRICE, 'gwei'):
+        if w3.eth.gas_price > Web3.to_wei(max_eth_gas_price, 'gwei'):
             raise RunnerException('Gas price is too high')
 
     def wait_for_bridge(self, init_balance):
@@ -366,6 +367,8 @@ class Runner:
         w3 = self.w3(chain)
         logger.print(f'Starting mint: {chain} - {nft_address}')
 
+        self.wait_for_eth_gas_price(w3)
+
         if token_id is None:
             status, tx_hash = self.mint_erc721(w3, nft_address)
         elif token_id == 'custom':
@@ -395,11 +398,19 @@ class Runner:
             return run_action(), False
         except InsufficientFundsException as e:
             if e.chain == 'Zora' and AUTO_BRIDGE:
+                if self.address not in auto_bridged_cnt_by_address:
+                    auto_bridged_cnt_by_address[self.address] = 0
+
+                if auto_bridged_cnt_by_address[self.address] > AUTO_BRIDGE_MAX_CNT:
+                    logger.print('Insufficient funds on Zora. But auto-bridge was already made max possible times')
+                    raise e
+
                 logger.print(f'Insufficient funds on Zora. Let\'s bridge')
                 init_balance = self.get_native_balance(e.chain)
                 self.bridge()
                 self.wait_for_bridge(init_balance)
                 wait_next_tx()
+                auto_bridged_cnt_by_address[self.address] += 1
                 return run_action(), True
             else:
                 raise e
@@ -476,6 +487,8 @@ class Runner:
             self.address, self.address,
             sale_config, description, '', image_uri
         )
+
+        self.wait_for_eth_gas_price(w3)
 
         self.build_and_send_tx(
             w3,
@@ -588,7 +601,11 @@ class Runner:
         if len(actions) == 0:
             raise Exception('All update features are turned off')
 
-        random.choice(actions)(self.w3('Zora'), collection_address)
+        w3 = self.w3('Zora')
+
+        self.wait_for_eth_gas_price(w3)
+
+        random.choice(actions)(w3, collection_address)
         return Status.SUCCESS
 
     def update(self, collection_address):
@@ -600,6 +617,7 @@ class Runner:
         collection_address = Web3.to_checksum_address(collection_address)
         logger.print(f'Admin: Collection {collection_address}')
         contract = w3.eth.contract(collection_address, abi=ZORA_ERC721_ABI)
+        self.wait_for_eth_gas_price(w3)
         self.build_and_send_tx(
             w3,
             contract.functions.adminMint(self.address, random.randint(ADMIN_MINT_COUNT[0], ADMIN_MINT_COUNT[1])),
@@ -659,6 +677,9 @@ def main():
     queue = list(zip(wallets, proxies))
     mints = []
     for link in mint_links:
+        link = link.strip()
+        if link == '' or link[0] == '#':
+            continue
         if link.startswith('custom'):
             chain = link.split(':')[1]
             token_id = 'custom'
@@ -729,10 +750,12 @@ def main():
             logger.print(f'Failed to init: {str(e)}', color='red')
             continue
 
-        modules = copy.deepcopy(MODULES)
+        modules = []
+        for action, (min_cnt, max_cnt) in MODULES.items():
+            modules.extend([action for _ in range(random.randint(min_cnt, max_cnt))])
         modules = [m.capitalize() for m in modules]
-        if MODULES_RANDOM_ORDER:
-            random.shuffle(modules)
+
+        random.shuffle(modules)
 
         minted_in_run = set()
         auto_bridged_cnt = 0
