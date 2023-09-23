@@ -916,16 +916,16 @@ def main():
 
 
 if __name__ == '__main__':
-    cprint('###########################################################', 'cyan')
+    cprint('###############################################################', 'cyan')
     cprint('#################', 'cyan', end='')
-    cprint(' https://t.me/timfamecode ', 'magenta', end='')
+    cprint(' https://t.me/thelaziestcoder ', 'magenta', end='')
     cprint('################', 'cyan')
     cprint('#################', 'cyan', end='')
-    cprint(' https://t.me/timfamecode ', 'magenta', end='')
+    cprint(' https://t.me/thelaziestcoder ', 'magenta', end='')
     cprint('################', 'cyan')
     cprint('#################', 'cyan', end='')
-    cprint(' https://t.me/timfamecode ', 'magenta', end='')
+    cprint(' https://t.me/thelaziestcoder ', 'magenta', end='')
     cprint('################', 'cyan')
-    cprint('###########################################################\n', 'cyan')
+    cprint('###############################################################\n', 'cyan')
 
     main()
