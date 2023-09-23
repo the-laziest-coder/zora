@@ -6,7 +6,7 @@
  - Create collections
  - Update collections
 
-### Follow: https://t.me/timfamecode
+### Follow: https://t.me/thelaziestcoder
 
 ### Settings
 `files/wallets.txt` - Wallets with private keys \
