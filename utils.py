@@ -40,7 +40,7 @@ def to_bytes(hex_str):
 class InsufficientFundsException(Exception):
 
     def __init__(self, prefix='', chain=None):
-        super().__init__(prefix + 'Insufficient funds')
+        super().__init__(prefix + 'Insufficient funds on ' + str(chain))
         self.chain = chain
 
 
@@ -79,7 +79,7 @@ def build_and_send_tx(w3, address, private_key, func, value, verify_func, action
             max_priority_fee, max_fee_per_gas = 5000000, 5000000
         else:
             max_priority_fee = w3.eth.max_priority_fee
-            max_fee_per_gas = max_priority_fee + int(w3.eth.get_block("latest")["baseFeePerGas"] * 1.2)
+            max_fee_per_gas = max_priority_fee + int(w3.eth.get_block("latest")["baseFeePerGas"] * 1.4)
 
     if max_priority_fee and max_fee_per_gas:
         tx_data['maxPriorityFeePerGas'] = max_priority_fee
