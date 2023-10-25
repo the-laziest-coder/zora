@@ -722,7 +722,7 @@ class Runner:
     def wait_recently_created_collection(self, is_erc_1155, timestamp_from):
         wait_time = 0
 
-        while wait_time < 30:
+        while wait_time < 60:
 
             logger.print(f'Create: Waiting for collection creating')
             time.sleep(5)
@@ -1124,7 +1124,7 @@ def main():
                     else:
                         created_nft = runner.wait_recently_created_collection(USE_NFT_1155, timestamp)
                         if created_nft is None:
-                            logger.print(f'{module}: Can\'t get created collection link for 20 seconds', color='red')
+                            logger.print(f'{module}: Can\'t get created collection link for 60 seconds', color='red')
                         else:
                             created_mints[address].append(created_nft)
 
@@ -1157,7 +1157,7 @@ def main():
                         else:
                             created_nft = runner.wait_recently_created_collection(USE_NFT_1155, timestamp)
                             if created_nft is None:
-                                logger.print(f'{module}: Can\'t get created collection link for 20 seconds',
+                                logger.print(f'{module}: Can\'t get created collection link for 60 seconds',
                                              color='red')
                                 continue
                             else:
@@ -1202,7 +1202,7 @@ def main():
                         else:
                             created_nft = runner.wait_recently_created_collection(USE_NFT_1155, timestamp)
                             if created_nft is None:
-                                logger.print(f'{module}: Can\'t get created collection link for 20 seconds',
+                                logger.print(f'{module}: Can\'t get created collection link for 60 seconds',
                                              color='red')
                                 continue
                             else:
