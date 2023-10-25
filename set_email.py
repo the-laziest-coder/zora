@@ -199,6 +199,15 @@ def main():
     for wallet, proxy, email_info in zip(wallets, proxies, emails):
         idx += 1
 
+        if idx > 1:
+            wait = random.randint(
+                int(config.NEXT_ADDRESS_MIN_WAIT_TIME * 60),
+                int(config.NEXT_ADDRESS_MAX_WAIT_TIME * 60)
+            )
+            waiting_msg = 'Waiting for next run for {:.2f} minutes'.format(wait / 60)
+            logger.info(waiting_msg)
+            time.sleep(wait)
+
         if wallet.find(';') == -1:
             key = wallet
         else:
