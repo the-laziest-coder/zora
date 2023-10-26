@@ -374,6 +374,7 @@ class Runner:
     @runner_func('Mint Custom')
     def mint_custom(self, w3, nft_info):
         nft_address, cnt, price = tuple(nft_info.split(':'))
+        nft_address = Web3.to_checksum_address(nft_address)
         cnt = int(cnt)
         price = decimal_to_int(float(price), NATIVE_DECIMALS)
 
@@ -408,7 +409,8 @@ class Runner:
 
     def _mint(self, nft):
         chain, nft_address, token_id = nft
-        nft_address = Web3.to_checksum_address(nft_address)
+        if token_id != 'custom':
+            nft_address = Web3.to_checksum_address(nft_address)
         w3 = self.w3(chain)
         logger.print(f'Starting mint: {chain} - {nft_address}{"" if token_id is None else " - Token " + str(token_id)}')
 
