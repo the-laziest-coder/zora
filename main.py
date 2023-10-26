@@ -1211,8 +1211,9 @@ def main():
                         wait_next_tx()
 
                         collection_addresses = runner.get_created_zora_collections(USE_NFT_1155)
+                        is_erc_1155 = USE_NFT_1155
 
-                    _, bridged = runner.admin_mint(random.choice(collection_addresses), USE_NFT_1155)
+                    _, bridged = runner.admin_mint(random.choice(collection_addresses), is_erc_1155)
                     if bridged:
                         auto_bridged_cnt += 1
                     stats[address]['Admin Mint'] += 1
