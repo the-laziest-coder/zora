@@ -330,14 +330,13 @@ class Runner:
         if balance >= MAX_NFT_PER_ADDRESS:
             return Status.ALREADY, None
 
-        contract_version = contract.functions.contractVersion().call()
-
-        minter_address = MINTER_ADDRESSES[contract_version][get_chain(w3)] if contract_version in MINTER_ADDRESSES \
-            else MINTER_ADDRESSES['Other'][get_chain(w3)]
-
+        minter_address = MINTER_ADDRESSES['2.0.0'][get_chain(w3)]
         minter = w3.eth.contract(minter_address, abi=ZORA_MINTER_ABI)
-
         sale_config = minter.functions.sale(nft_address, token_id).call()
+        if sale_config[0] == 0:
+            minter_address = MINTER_ADDRESSES['Other'][get_chain(w3)]
+            minter = w3.eth.contract(minter_address, abi=ZORA_MINTER_ABI)
+            sale_config = minter.functions.sale(nft_address, token_id).call()
         price = sale_config[3]
 
         value = contract.functions.mintFee().call() + price
