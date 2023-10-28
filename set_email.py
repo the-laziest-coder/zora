@@ -103,6 +103,8 @@ class Zora:
         if resp.status_code != 200:
             raise Exception(f'Get account info bas status code: {resp.status_code}, response = {resp.text}')
         try:
+            if 'account' not in resp.json():
+                return '', False
             return resp.json()['account']['emailAddress'], resp.json()['account']['emailVerified']
         except Exception as e:
             raise Exception(f'Get account info bad response: response = {resp.text}: {str(e)}')
