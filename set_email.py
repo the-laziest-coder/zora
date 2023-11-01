@@ -113,14 +113,16 @@ class Zora:
         self.ensure_authorized()
         email_username, _ = tuple(email_info.split(':'))
         existed_email, already_verified = self.get_existed_email()
-        if already_verified:
+        if already_verified and not config.UPDATE_EMAIL_IF_VERIFIED:
             return True, True
         if existed_email == '':
+            logger.info('Setting new email')
             resp = self.sess.post('https://zora.co/api/account/new', json={
                 'emailAddress': email_username,
                 'marketingOptIn': True,
             }, cookies=self.cookies)
         elif existed_email != email_username:
+            logger.info('Updating existed email')
             resp = self.sess.post('https://zora.co/api/account/update-email', json={
                 'emailAddress': email_username,
             }, cookies=self.cookies)
@@ -128,7 +130,7 @@ class Zora:
             logger.info("This email was already set")
             return True, False
         if resp.status_code != 200:
-            raise Exception(f'Set email bas status code: {resp.status_code}, response = {resp.text}')
+            raise Exception(f'Set email bad status code: {resp.status_code}, response = {resp.text}')
         try:
             return resp.json()['ok'], False
         except Exception as e:
