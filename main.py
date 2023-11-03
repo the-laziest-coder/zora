@@ -11,6 +11,7 @@ import web3.exceptions
 
 from termcolor import cprint
 from enum import Enum
+from tqdm import tqdm
 from pathlib import Path
 from datetime import datetime
 from requests_toolbelt import MultipartEncoder
@@ -1030,7 +1031,7 @@ def main():
 
     created_mints, stats = {}, {}
 
-    for wallet, proxy in queue:
+    for wallet, proxy in tqdm(queue, desc='Initializing...'):
         if wallet.find(';') == -1:
             key = wallet
         else:
