@@ -16,6 +16,7 @@ from pathlib import Path
 from datetime import datetime
 from requests_toolbelt import MultipartEncoder
 from eth_account.account import Account
+from eth_abi.packed import encode_packed
 
 from logger import Logger, get_telegram_bot_chat_id
 from utils import *
@@ -41,6 +42,8 @@ def parse_mint_link(link):
     link = link.strip()
     if link == '' or link[0] == '#':
         return None
+    if link == 'zerius':
+        return 'Zora', ZERIUS_NFT_ADDRESS, 'zerius'
     if link.startswith('custom'):
         chain = link.split(':')[1]
         token_id = 'custom'
@@ -251,8 +254,73 @@ class Runner:
 
         logger.print('Assets bridged successfully')
 
+    def refuel_zerius(self):
+        w3 = self.w3(ZERIUS_SOURCE_CHAIN)
+
+        self.wait_for_eth_gas_price(w3)
+
+        balance = w3.eth.get_balance(self.address)
+        balance = int_to_decimal(balance, NATIVE_DECIMALS)
+
+        eth_gas_mult = int_to_decimal(self.w3('Ethereum').eth.gas_price, 9) / 30 * 1.5
+        if ZERIUS_SOURCE_CHAIN == 'Arbitrum':
+            balance -= 0.00025 * eth_gas_mult
+        else:
+            balance -= 0.0001 * eth_gas_mult
+
+        if balance < BRIDGE_AMOUNT[0] / 2:
+            raise Exception(f'Low balance on {ZERIUS_SOURCE_CHAIN}')
+
+        amount = random.uniform(min(balance, BRIDGE_AMOUNT[0]), min(balance, BRIDGE_AMOUNT[1]))
+        amount = round(amount, random.randint(4, 6))
+
+        value = Web3.to_wei(amount, 'ether')
+
+        contract = w3.eth.contract(ZERIUS_REFUEL_ADDRESSES[ZERIUS_SOURCE_CHAIN], abi=ZERIUS_REFUEL_ABI)
+
+        min_dst_gas_lookup = contract.functions.minDstGasLookup(LZ_CHAIN_IDS['Zora'], 0).call()
+        adapter_params = encode_packed(
+            ['uint16', 'uint256', 'uint256', 'address'],
+            [2, min_dst_gas_lookup, value, self.address]
+        )
+        dst_contract_address = encode_packed(['address'], [ZERIUS_REFUEL_ADDRESSES['Zora']])
+
+        send_fee = contract.functions.estimateSendFee(LZ_CHAIN_IDS['Zora'], dst_contract_address, adapter_params).call()
+
+        additional_fee = send_fee[0] - value
+        additional_fee = int_to_decimal(additional_fee, NATIVE_DECIMALS)
+
+        balance -= additional_fee
+        if balance < BRIDGE_AMOUNT[0] / 2:
+            raise Exception(f'Low balance on {ZERIUS_SOURCE_CHAIN}')
+
+        amount = random.uniform(min(balance, BRIDGE_AMOUNT[0]), min(balance, BRIDGE_AMOUNT[1]))
+        amount = round(amount, random.randint(4, 6))
+
+        logger.print(f'Refueling {amount} ETH from {ZERIUS_SOURCE_CHAIN}')
+
+        value = Web3.to_wei(amount, 'ether')
+
+        adapter_params = encode_packed(
+            ['uint16', 'uint256', 'uint256', 'address'],
+            [2, min_dst_gas_lookup, value, self.address]
+        )
+        send_fee = contract.functions.estimateSendFee(LZ_CHAIN_IDS['Zora'], dst_contract_address, adapter_params).call()
+
+        self.build_and_send_tx(
+            w3,
+            contract.functions.refuel(LZ_CHAIN_IDS['Zora'], dst_contract_address, adapter_params),
+            value=send_fee[0],
+            action='Zerius Refuel',
+        )
+
+        return Status.SUCCESS
+
     @runner_func('Bridge')
     def bridge(self):
+        if REFUEL_WITH_ZERIUS:
+            return self.refuel_zerius()
+
         w3 = self.w3('Ethereum')
 
         contract = w3.eth.contract(ZORA_BRIDGE_ADDRESS, abi=ZORA_BRIDGE_ABI)
@@ -270,6 +338,8 @@ class Runner:
 
         amount = random.uniform(min(balance, BRIDGE_AMOUNT[0]), min(balance, BRIDGE_AMOUNT[1]))
         amount = round(amount, random.randint(4, 6))
+
+        logger.print(f'Bridging {amount} ETH from Ethereum')
 
         value = Web3.to_wei(amount, 'ether')
 
@@ -394,6 +464,25 @@ class Runner:
 
         return Status.SUCCESS, tx_hash
 
+    @runner_func('Mint Zerius')
+    def mint_zerius(self, w3):
+        contract = w3.eth.contract(ZERIUS_NFT_ADDRESS, abi=ZERIUS_NFT_ABI)
+
+        balance = contract.functions.balanceOf(self.address).call()
+        if balance >= MAX_NFT_PER_ADDRESS:
+            return Status.ALREADY, None
+
+        price = contract.functions.mintFee().call()
+
+        tx_hash = self.build_and_send_tx(
+            w3,
+            contract.functions.mint(),
+            action='Mint Zerius',
+            value=price,
+        )
+
+        return Status.SUCCESS, tx_hash
+
     @runner_func('Mint.fun submit')
     def mint_fun_submit(self, chain, tx_hash):
         if not self.with_mint_fun:
@@ -409,7 +498,7 @@ class Runner:
 
     def _mint(self, nft):
         chain, nft_address, token_id = nft
-        if token_id != 'custom':
+        if token_id != 'custom' and token_id != 'zerius':
             nft_address = Web3.to_checksum_address(nft_address)
         w3 = self.w3(chain)
         logger.print(f'Starting mint: {chain} - {nft_address}{"" if token_id is None else " - Token " + str(token_id)}')
@@ -420,10 +509,12 @@ class Runner:
             status, tx_hash = self.mint_erc721(w3, nft_address)
         elif token_id == 'custom':
             status, tx_hash = self.mint_custom(w3, nft_address)
+        elif token_id == 'zerius':
+            status, tx_hash = self.mint_zerius(w3)
         else:
             status, tx_hash = self.mint_erc1155(w3, nft_address, token_id)
 
-        if status == Status.SUCCESS and tx_hash:
+        if status == Status.SUCCESS and tx_hash and token_id != 'zerius':
             try:
                 self.mint_fun_submit(chain, tx_hash)
                 logger.print(f'Mint: Mint.fun points added')
@@ -1047,6 +1138,8 @@ def main():
         stats[address]['Created'] = 0
         stats[address]['Updated'] = 0
         stats[address]['Admin Mint'] = 0
+
+    print()
 
     random.shuffle(queue)
 

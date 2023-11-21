@@ -10,3 +10,6 @@ https://zora.co/collect/base:0x541e070befeda627ac5f8de68cd2673e28098a4a/1
 custom:zora:0x9eAE90902a68584E93a83D7638D3a95ac67FC446:10:0.00008
 custom:zora:0x4073a52A3fc328D489534Ab908347eC1FcB18f7f:10:0.00008
 custom:zora:0xA85B9F9154db5bd9C0b7F869bC910a98ba1b7A87:10:0.00008
+zerius
+zerius
+zerius

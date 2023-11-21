@@ -3,6 +3,7 @@ RPCs = {
     'Zora': 'https://rpc.zora.energy',
     'Optimism': 'https://optimism.publicnode.com',
     'Base': 'https://mainnet.base.org',
+    'Arbitrum': 'https://rpc.ankr.com/arbitrum',
 }
 
 ###############################################################################################################
@@ -118,6 +119,12 @@ AUTO_BRIDGE_MAX_CNT = 1
 BRIDGE_AMOUNT = (0.005, 0.0065)
 # Сколько максимум ждать бриджа. Баланс проверяется каждые 20 секунд
 BRIDGE_WAIT_TIME = 300
+
+# Вместо оф бриджа делать рефуел из Arbitrum или Optimism в Zora через Zerius
+REFUEL_WITH_ZERIUS = True
+# При BRIDGE_WITH_ZERIUS = True, из какой сети делать рефуел,
+# Доступные сети: 'Arbitrum', 'Optimism'
+ZERIUS_SOURCE_CHAIN = 'Optimism'
 
 # Если ревардов меньше, чем указанная сумма, то клема не будет.
 MIN_REWARDS_TO_CLAIM = 0.001

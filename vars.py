@@ -1,7 +1,7 @@
 import json
 
 
-INVOLVED_CHAINS = ['Zora', 'Base', 'Optimism', 'Ethereum']
+INVOLVED_CHAINS = ['Zora', 'Base', 'Optimism', 'Ethereum', 'Arbitrum']
 
 SCANS = {
     'Ethereum': 'https://etherscan.io',
@@ -49,7 +49,7 @@ CHAIN_NAMES = {
     8453: 'Base',
 }
 
-EIP1559_CHAINS = ['Ethereum', 'Zora', 'Optimism', 'Base']
+EIP1559_CHAINS = ['Ethereum', 'Zora', 'Optimism', 'Base', 'Arbitrum']
 
 NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
 
@@ -115,3 +115,19 @@ PROTOCOL_REWARDS_ADDRESSES = {
     'Base': ['0x7777777F279eba3d3Ad8F4E708545291A6fDBA8B'],
 }
 PROTOCOL_REWARDS_ABI = json.load(open('abi/protocol_rewards.json'))
+
+LZ_CHAIN_IDS = {
+    'Arbitrum': 110,
+    'Optimism': 111,
+    'Zora': 195,
+}
+
+ZERIUS_NFT_ADDRESS = '0x178608fFe2Cca5d36f3Fc6e69426c4D3A5A74A41'
+ZERIUS_NFT_ABI = json.load(open('abi/zerius_nft.json'))
+
+ZERIUS_REFUEL_ADDRESSES = {
+    'Arbitrum': '0x412aea168aDd34361aFEf6a2e3FC01928Fba1248',
+    'Optimism': '0x2076BDd52Af431ba0E5411b3dd9B5eeDa31BB9Eb',
+    'Zora': '0x1fe2c567169d39CCc5299727FfAC96362b2Ab90E',
+}
+ZERIUS_REFUEL_ABI = json.load(open('abi/zerius_refuel.json'))
