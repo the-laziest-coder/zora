@@ -795,7 +795,8 @@ class Runner:
                                 f'&chainId=7777777'
                                 f'&direction=desc'
                                 f'&limit=1000'
-                                f'&includeTokens=true')
+                                f'&includeTokens=all'
+                                f'&excludeBrokenContracts=false')
         if resp_raw.status_code != 200:
             raise Exception(f'status_code = {resp_raw.status_code}, response = {resp_raw.text}')
         try:
@@ -1073,7 +1074,8 @@ def get_all_created(address, proxy):
                             f'&chainId=7777777'
                             f'&direction=desc'
                             f'&limit=1000'
-                            f'&includeTokens=true', proxies=proxies)
+                            f'&includeTokens=all'
+                            f'&excludeBrokenContracts=false', proxies=proxies)
     if resp_raw.status_code != 200:
         raise Exception(f'status_code = {resp_raw.status_code}, response = {resp_raw.text}')
     try:

@@ -37,7 +37,7 @@ class Zora:
     def get_nonce(self):
         resp = self.sess.get('https://zora.co/api/auth/nonce', cookies=self.cookies)
         if resp.status_code != 200:
-            raise Exception(f'Get nonce bas status code: {resp.status_code}, response = {resp.text}')
+            raise Exception(f'Get nonce bad status code: {resp.status_code}, response = {resp.text}')
         try:
             nonce = resp.json()['nonce']
             self.set_wallet_cookie(resp)
@@ -82,7 +82,7 @@ class Zora:
             'signature': signature,
         }, cookies=self.cookies)
         if resp.status_code != 200:
-            raise Exception(f'Sign in bas status code: {resp.status_code}, response = {resp.text}')
+            raise Exception(f'Sign in bad status code: {resp.status_code}, response = {resp.text}')
         try:
             self.set_wallet_cookie(resp)
             return resp.json()['ok']
@@ -101,7 +101,7 @@ class Zora:
         if resp.status_code == 404:
             return '', False
         if resp.status_code != 200:
-            raise Exception(f'Get account info bas status code: {resp.status_code}, response = {resp.text}')
+            raise Exception(f'Get account info bad status code: {resp.status_code}, response = {resp.text}')
         try:
             if 'account' not in resp.json():
                 return '', False
@@ -162,7 +162,7 @@ class Zora:
             resp = self.sess.post('https://zora.co/api/account/email-verify', json={'token': token},
                                   cookies=self.cookies)
             if resp.status_code != 200:
-                raise Exception(f'Verify email bas status code: {resp.status_code}, response = {resp.text}')
+                raise Exception(f'Verify email bad status code: {resp.status_code}, response = {resp.text}')
             try:
                 return resp.json()['ok']
             except Exception as e:
