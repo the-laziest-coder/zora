@@ -8,6 +8,7 @@
  - Update collections and NFT metadata
  - Link email to Zora account
  - Claim rewards
+ - Check wallets stats
 
 ### Follow: https://t.me/thelaziestcoder
 
@@ -27,6 +28,8 @@ Run main script: \
 `python3 main.py`
 Link email to Zora account: \
 `python3 set_email.py`
+Check wallets stats: \
+`python3 checker.py`
 
 ### Results
 
