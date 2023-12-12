@@ -26,8 +26,10 @@ Installing all dependencies: \
 
 Run main script: \
 `python3 main.py`
+
 Link email to Zora account: \
 `python3 set_email.py`
+
 Check wallets stats: \
 `python3 checker.py`
 
