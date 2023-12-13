@@ -56,6 +56,8 @@ class ZoraScan:
 
     async def get_data(self):
         logger.info(f'{self.idx}) Processing {self.address}')
+        data = [None] * 8
+
         try:
             req_args = {} if self.proxy is None or self.proxy == '' else {
                 'proxy': self.proxy,
@@ -65,13 +67,19 @@ class ZoraScan:
             balance = await w3.eth.get_balance(self.address)
             balance = int_to_decimal(balance, NATIVE_DECIMALS)
             balance = '%.4f' % balance
-            unique_erc721, unique_erc1155, erc721, erc1155 = await self.get_nft_data()
-            wallets_data[self.address] = (balance, tx_count,
-                                          erc721 + erc1155, erc721, erc1155,
-                                          unique_erc721 + unique_erc1155, unique_erc721, unique_erc1155)
-            logger.success(f'{self.idx}) Data filled')
+            data[0], data[1] = balance, tx_count
         except Exception as e:
-            logger.error(f'{self.idx}) Failed: {str(e)}')
+            logger.error(f'{self.idx}) Failed to get chain data: {str(e)}')
+
+        try:
+            unique_erc721, unique_erc1155, erc721, erc1155 = await self.get_nft_data()
+            data[2], data[3], data[4] = erc721 + erc1155, erc721, erc1155
+            data[5], data[6], data[7] = unique_erc721 + unique_erc1155, unique_erc721, unique_erc1155
+        except Exception as e:
+            logger.error(f'{self.idx}) Failed to get nft data: {str(e)}')
+
+        wallets_data[self.address] = data
+        logger.success(f'{self.idx}) Data filled')
 
 
 async def fill_batch(batch):
