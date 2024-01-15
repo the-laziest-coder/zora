@@ -40,5 +40,5 @@ Check wallets stats: \
 
 ### Donate :)
 
-TRC-20 - `TX7yeJVHwhNsNy4ksF1pFRFnunF1aFRmet` \
-ERC-20 - `0x5aa3c82045f944f5afa477d3a1d0be3c96196319`
+TRC-20 - `TXTMsHwabUhGpsH9DkQLo2UTYRs8XaZkqH` \
+ERC-20 - `0x8b5e86ebb78aa83beb6d17e868c596cda07fb314`
