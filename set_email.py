@@ -1,21 +1,55 @@
 import random
 import imaplib
 import email
+import uuid
 import time
+import ua_generator
 
 import requests
 from email.header import decode_header
-import config
 from datetime import datetime
+from retry import retry
 from loguru import logger
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from termcolor import cprint
 
+import config
+
+
+address2ua = {}
+
+
+def get_headers(address, additional_headers=None):
+    if address not in address2ua:
+        address2ua[address] = ua_generator.generate(device='desktop', browser='chrome')
+    ua = address2ua[address]
+    headers = {
+        'accept': 'application/json, text/plain, */*',
+        'origin': 'https://zora.co',
+        'accept-language': 'en-US,en;q=0.9',
+        'content-type': 'application/json',
+        'referer': 'https://zora.co/',
+        'sec-ch-ua': f'"{ua.ch.brands[2:]}"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': f'"{ua.platform.title()}"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'user-agent': ua.text,
+    }
+    if additional_headers is not None:
+        headers.update(additional_headers)
+    return headers
+
 
 class Zora:
 
-    def __init__(self, private_key, proxy):
+    PRIVY_APP_ID = 'clpgf04wn04hnkw0fv1m11mnb'
+    PRIVY_CLIENT = 'react-auth:1.51.1'
+
+    def __init__(self, idx, private_key, proxy):
+        self.idx = idx
         if proxy is not None and len(proxy) > 4 and proxy[:4] != 'http':
             proxy = 'http://' + proxy
         self.proxy = proxy
@@ -27,72 +61,77 @@ class Zora:
         self.private_key = private_key
         self.account = Account().from_key(private_key)
         self.address = self.account.address
-        self.cookies = {'wallet_address': self.address}
-
-    def set_wallet_cookie(self, resp):
-        wallet_cookie = resp.headers.get('set-cookie')
-        wallet_cookie = wallet_cookie[wallet_cookie.find('=') + 1:wallet_cookie.find(';')]
-        self.cookies.update({'wallet': wallet_cookie})
+        self.cookies = {}
+        self.privy_ca_id = str(uuid.uuid4())
+        self.privy_headers = {
+            'privy-app-id': self.PRIVY_APP_ID,
+            'privy-ca-id': self.privy_ca_id,
+            'privy-client': self.PRIVY_CLIENT,
+            'accept': 'application/json',
+            'sec-fetch-site': 'cross-site',
+            'referer': 'https://zora.co/',
+        }
+        self.sess.headers = get_headers(self.address)
 
     def get_nonce(self):
-        resp = self.sess.get('https://zora.co/api/auth/nonce', cookies=self.cookies)
+        resp = self.sess.post('https://auth.privy.io/api/v1/siwe/init', json={
+            'address': self.address,
+        }, headers=self.privy_headers)
         if resp.status_code != 200:
             raise Exception(f'Get nonce bad status code: {resp.status_code}, response = {resp.text}')
         try:
             nonce = resp.json()['nonce']
-            self.set_wallet_cookie(resp)
             return nonce
         except Exception as e:
             raise Exception(f'Get nonce bad response: response = {resp.text}: {str(e)}')
 
     def sign_in(self):
-        issued_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
-
         nonce = self.get_nonce()
+        issued_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
 
         time.sleep(random.uniform(0.5, 1.5))
 
-        statement = f'Welcome to Zora!\n\n' \
-                    f'By proceeding, you accept Zora’s Terms of Service ' \
-                    f'(https://support.zora.co/en/articles/6383293-terms-of-service) ' \
-                    f'and Privacy Policy (https://support.zora.co/en/articles/6383373-zora-privacy-policy)'
-
         msg = f'zora.co wants you to sign in with your Ethereum account:\n' \
               f'{self.address}\n\n' \
-              f'{statement}\n\n' \
+              f'By signing, you are proving you own this wallet and logging in. ' \
+              f'This does not initiate a transaction or cost any fees.\n\n' \
               f'URI: https://zora.co\n' \
               f'Version: 1\n' \
               f'Chain ID: 1\n' \
               f'Nonce: {nonce}\n' \
-              f'Issued At: {issued_at}'
+              f'Issued At: {issued_at}\n' \
+              f'Resources:\n' \
+              f'- https://privy.io'
         message = encode_defunct(text=msg)
         signature = self.account.sign_message(message).signature.hex()
 
-        resp = self.sess.post('https://zora.co/api/auth/login', json={
-            'message': {
-                'address': self.address,
-                'chainId': 1,
-                'domain': 'zora.co',
-                'issuedAt': issued_at,
-                'nonce': nonce,
-                'statement': statement,
-                'uri': 'https://zora.co',
-                'version': '1',
-            },
+        resp = self.sess.post('https://auth.privy.io/api/v1/siwe/authenticate', json={
+            'chainId': 'eip155:7777777',
+            'connectorType': 'injected',
+            'message': msg,
             'signature': signature,
-        }, cookies=self.cookies)
+            'walletClientType': 'metamask',
+        }, headers=self.privy_headers)
         if resp.status_code != 200:
             raise Exception(f'Sign in bad status code: {resp.status_code}, response = {resp.text}')
         try:
-            self.set_wallet_cookie(resp)
-            return resp.json()['ok']
+            token = resp.json()['token']
+            self.cookies = {
+                'ajs_anonymous_id': str(uuid.uuid4()),
+                'device_id': str(uuid.uuid4()),
+                'zora-news-announcement-1': '2023-11-20T16:42:27Z',
+                'wallet_address': self.address,
+                'privy-token': token,
+                'privy-refresh-token': resp.json()['refresh_token'],
+            }
+            self.sess.headers.update({'authorization': 'Bearer ' + token})
         except Exception as e:
-            raise Exception(f'Get nonce bad response: response = {resp.text}: {str(e)}')
+            raise Exception(f'Sign in bad response: response = {resp.text}: {str(e)}')
 
     def ensure_authorized(self):
-        if self.cookies.get('wallet') is None:
+        if self.sess.headers.get('authorization') is None:
             self.sign_in()
-            logger.info('Signed in')
+            logger.info(f'{self.idx}) Signed in')
             time.sleep(random.uniform(1.5, 3.5))
 
     def get_existed_email(self):
@@ -116,27 +155,26 @@ class Zora:
         if already_verified and not config.UPDATE_EMAIL_IF_VERIFIED:
             return True, True
         if existed_email == '':
-            logger.info('Setting new email')
-            resp = self.sess.post('https://zora.co/api/account/new', json={
-                'emailAddress': email_username,
-                'marketingOptIn': True,
-            }, cookies=self.cookies)
-        elif existed_email != email_username:
-            logger.info('Updating existed email')
-            resp = self.sess.post('https://zora.co/api/account/update-email', json={
-                'emailAddress': email_username,
-            }, cookies=self.cookies)
+            logger.info(f'{self.idx}) Setting new email')
+            self.sess.headers.update({
+                'accept': 'application/json',
+                'sec-fetch-site': 'cross-site'
+            })
+            resp = self.sess.post('https://auth.privy.io/api/v1/passwordless/init', json={
+                'email': email_username,
+            }, headers=self.privy_headers)
+            self.sess.headers.update({'sec-fetch-site': 'same-origin'})
         else:
-            logger.info("This email was already set")
+            logger.info(f"{self.idx}) Email was already set")
             return True, False
         if resp.status_code != 200:
             raise Exception(f'Set email bad status code: {resp.status_code}, response = {resp.text}')
         try:
-            return resp.json()['ok'], False
+            return resp.json()['success'], False
         except Exception as e:
             raise Exception(f'Set email bad response: response = {resp.text}: {str(e)}')
 
-    def check_folder(self, imap, folder):
+    def check_folder(self, email_username, imap, folder):
         _, messages = imap.select(folder, readonly=True)
         msg_cnt = int(messages[0])
         for i in range(msg_cnt, 0, -1):
@@ -146,27 +184,20 @@ class Zora:
             subject, encoding = decode_header(msg['Subject'])[0]
             if isinstance(subject, bytes):
                 subject = subject.decode(encoding)
-            if subject != 'Verify your Zora account':
-                continue
-            body = msg.get_payload(decode=True).decode()
-            pre_link_message = 'Please activate your account'
-            if pre_link_message not in body:
-                pre_link_message = 'Please verify your email'
-                if pre_link_message not in body:
-                    raise Exception(f'Can\'t find verification token in e-mail: body = {body}')
-            body = body[body.find(pre_link_message):]
-            body = body[body.find('href') + 6:]
-            link = body[:body.find('"')]
-            token = link[link.rfind('=') + 1:]
 
-            resp = self.sess.post('https://zora.co/api/account/email-verify', json={'token': token},
-                                  cookies=self.cookies)
+            if ' is your login code for Zora' not in subject or len(subject) != 34:
+                continue
+
+            code = subject.split(' ')[0]
+
+            resp = self.sess.post('https://auth.privy.io/api/v1/passwordless/link', json={
+                'code': code,
+                'email': email_username,
+            }, headers=self.privy_headers)
             if resp.status_code != 200:
                 raise Exception(f'Verify email bad status code: {resp.status_code}, response = {resp.text}')
-            try:
-                return resp.json()['ok']
-            except Exception as e:
-                raise Exception(f'Verify email bad response: response = {resp.text}: {str(e)}')
+            return True
+        return False
 
     def verify_email(self, email_info):
         self.ensure_authorized()
@@ -174,9 +205,72 @@ class Zora:
         imap = imaplib.IMAP4_SSL(config.IMAP_SERVER)
         imap.login(email_username, email_password)
         for folder in config.EMAIL_FOLDERS:
-            if self.check_folder(imap, folder):
+            if self.check_folder(email_username, imap, folder):
                 return True
         return False
+
+    @retry(tries=config.MAX_TRIES, delay=1.5, backoff=2, jitter=(0, 1))
+    def link_email(self, email_info):
+        try:
+            set_success, verified = self.set_email(email_info)
+            if verified:
+                logger.success(f'{self.idx}) Email was already set and verified')
+                return
+            if not set_success:
+                raise Exception(f'Can\'t set email')
+        except Exception as e:
+            raise Exception(f'Failed set email: {str(e)}')
+
+        logger.info(f'{self.idx}) Email was set')
+
+        time.sleep(random.uniform(9, 11))
+
+        try:
+            verified = self.verify_email(email_info)
+        except Exception as e:
+            verified = False
+            logger.error(f'{self.idx}) Failed to verify email: {str(e)}')
+
+        t = 0
+        while not verified and t < 50:
+            logger.warning(f'{self.idx}) Can\'t find verify email. Waiting for 10 secs')
+            t += 10
+            time.sleep(10)
+            try:
+                verified = self.verify_email(email_info)
+            except Exception as e:
+                logger.error(f'{self.idx}) Failed to verify email: {str(e)}')
+                break
+
+        if not verified:
+            raise Exception(f'Failed to verify email')
+
+    @retry(tries=config.MAX_TRIES, delay=1.5, backoff=2, jitter=(0, 1))
+    def init_account(self, email_info):
+        self.ensure_authorized()
+
+        logger.info(f'{self.idx}) Init new Zora account')
+        resp = self.sess.post('https://zora.co/api/account/init', json={}, headers={
+            'referrer': 'https://zora.co/onboarding',
+        }, cookies=self.cookies)
+        if resp.status_code != 200:
+            raise Exception(f'Failed to init account. Status = {resp.status_code}. Response = {resp.text}')
+
+        name = email_info.split(':')[0].split('@')[0]
+        resp = self.sess.post('https://zora.co/api/profile/create', json={
+            'displayName': name,
+            'marketingOptIn': True,
+            'walletAddress': self.address.lower(),
+        }, headers={
+            'referer': 'https://zora.co/onboarding',
+        }, cookies=self.cookies)
+        if resp.status_code != 200:
+            raise Exception(f'Create Zora profile bad status code: {resp.status_code}, response = {resp.text}')
+        try:
+            if not resp.json()['ok']:
+                raise Exception()
+        except Exception as e:
+            raise Exception(f'Create Zora profile bad response: response = {resp.text}: {str(e)}')
 
 
 def main():
@@ -217,43 +311,21 @@ def main():
         else:
             key = wallet.split(';')[1]
 
-        client = Zora(key, proxy)
-
+        client = Zora(idx, key, proxy)
         logger.info(f'{idx}) Processing {client.address}')
 
         try:
-            set_success, verified = client.set_email(email_info)
-            if verified and not config.UPDATE_EMAIL_IF_VERIFIED:
-                logger.success(f'{idx}) Email was already set and verified')
-                continue
-            if not set_success:
-                logger.error(f'{idx}) Can\'t set email')
-                continue
+            client.link_email(email_info)
+            logger.success(f'{idx}) Email verified')
         except Exception as e:
-            logger.error(f'{idx}) Failed set email: {str(e)}')
+            logger.error(f'{idx}) {str(e)}')
             continue
 
-        logger.info(f'{idx}) Email was set')
-
-        time.sleep(random.uniform(9, 11))
-
         try:
-            verified = client.verify_email(email_info)
+            client.init_account(email_info)
+            logger.success(f'{idx}) Zora profile created')
         except Exception as e:
-            verified = False
-            logger.error(f'{idx}) Failed to verify email: {str(e)}')
-        t = 0
-        while not verified and t < 120:
-            logger.error(f'{idx}) Can\'t find verify email. Waiting for 10 secs')
-            t += 10
-            time.sleep(t)
-            try:
-                verified = client.verify_email(email_info)
-            except Exception as e:
-                logger.error(f'{idx}) Failed to verify email: {str(e)}')
-                break
-        if verified:
-            logger.success(f'{idx}) Email verified')
+            logger.error(f'{idx}) Failed to create Zora profile: {str(e)}')
 
 
 if __name__ == '__main__':

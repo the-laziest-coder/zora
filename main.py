@@ -514,7 +514,7 @@ class Runner:
         else:
             status, tx_hash = self.mint_erc1155(w3, nft_address, token_id)
 
-        if status == Status.SUCCESS and tx_hash and token_id != 'zerius':
+        if status == Status.SUCCESS and tx_hash and token_id != 'zerius' and self.with_mint_fun:
             try:
                 self.mint_fun_submit(chain, tx_hash)
                 logger.print(f'Mint: Mint.fun points added')
