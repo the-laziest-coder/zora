@@ -199,11 +199,16 @@ class Zora:
             return True
         return False
 
+    @retry(tries=5, delay=1.5, backoff=2, jitter=(0, 1))
+    def imap_login(self, email_username, email_password):
+        imap = imaplib.IMAP4_SSL(config.IMAP_SERVER)
+        imap.login(email_username, email_password)
+        return imap
+
     def verify_email(self, email_info):
         self.ensure_authorized()
         email_username, email_password = tuple(email_info.split(':'))
-        imap = imaplib.IMAP4_SSL(config.IMAP_SERVER)
-        imap.login(email_username, email_password)
+        imap = self.imap_login(email_username, email_password)
         for folder in config.EMAIL_FOLDERS:
             if self.check_folder(email_username, imap, folder):
                 return True
