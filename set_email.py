@@ -46,7 +46,7 @@ def get_headers(address, additional_headers=None):
 class Zora:
 
     PRIVY_APP_ID = 'clpgf04wn04hnkw0fv1m11mnb'
-    PRIVY_CLIENT = 'react-auth:1.51.1'
+    PRIVY_CLIENT = 'react-auth:1.52.2'
 
     def __init__(self, idx, private_key, proxy):
         self.idx = idx
@@ -61,22 +61,25 @@ class Zora:
         self.private_key = private_key
         self.account = Account().from_key(private_key)
         self.address = self.account.address
-        self.cookies = {}
+        self.cookies = {
+            'wallet_address': self.address,
+            'device_id': str(uuid.uuid4()),
+        }
         self.privy_ca_id = str(uuid.uuid4())
         self.privy_headers = {
             'privy-app-id': self.PRIVY_APP_ID,
             'privy-ca-id': self.privy_ca_id,
             'privy-client': self.PRIVY_CLIENT,
             'accept': 'application/json',
-            'sec-fetch-site': 'cross-site',
+            'sec-fetch-site': 'same-site',
             'referer': 'https://zora.co/',
         }
         self.sess.headers = get_headers(self.address)
 
     def get_nonce(self):
-        resp = self.sess.post('https://auth.privy.io/api/v1/siwe/init', json={
+        resp = self.sess.post('https://privy.zora.co/api/v1/siwe/init', json={
             'address': self.address,
-        }, headers=self.privy_headers)
+        }, headers=self.privy_headers, cookies=self.cookies)
         if resp.status_code != 200:
             raise Exception(f'Get nonce bad status code: {resp.status_code}, response = {resp.text}')
         try:
@@ -105,26 +108,18 @@ class Zora:
         message = encode_defunct(text=msg)
         signature = self.account.sign_message(message).signature.hex()
 
-        resp = self.sess.post('https://auth.privy.io/api/v1/siwe/authenticate', json={
+        resp = self.sess.post('https://privy.zora.co/api/v1/siwe/authenticate', json={
             'chainId': 'eip155:7777777',
             'connectorType': 'injected',
             'message': msg,
             'signature': signature,
             'walletClientType': 'metamask',
-        }, headers=self.privy_headers)
+        }, headers=self.privy_headers, cookies=self.cookies)
         if resp.status_code != 200:
             raise Exception(f'Sign in bad status code: {resp.status_code}, response = {resp.text}')
         try:
-            token = resp.json()['token']
-            self.cookies = {
-                'ajs_anonymous_id': str(uuid.uuid4()),
-                'device_id': str(uuid.uuid4()),
-                'zora-news-announcement-1': '2023-11-20T16:42:27Z',
-                'wallet_address': self.address,
-                'privy-token': token,
-                'privy-refresh-token': resp.json()['refresh_token'],
-            }
-            self.sess.headers.update({'authorization': 'Bearer ' + token})
+            self.cookies.update({n: v for n, v in resp.cookies.items()})
+            self.sess.headers.update({'authorization': 'Bearer ' + resp.json()['token']})
         except Exception as e:
             raise Exception(f'Sign in bad response: response = {resp.text}: {str(e)}')
 
@@ -156,14 +151,9 @@ class Zora:
             return True, True
         if existed_email == '':
             logger.info(f'{self.idx}) Setting new email')
-            self.sess.headers.update({
-                'accept': 'application/json',
-                'sec-fetch-site': 'cross-site'
-            })
-            resp = self.sess.post('https://auth.privy.io/api/v1/passwordless/init', json={
+            resp = self.sess.post('https://privy.zora.co/api/v1/passwordless/init', json={
                 'email': email_username,
-            }, headers=self.privy_headers)
-            self.sess.headers.update({'sec-fetch-site': 'same-origin'})
+            }, headers=self.privy_headers, cookies=self.cookies)
         else:
             logger.info(f"{self.idx}) Email was already set")
             return True, False
@@ -183,17 +173,17 @@ class Zora:
             msg = email.message_from_bytes(raw_email)
             subject, encoding = decode_header(msg['Subject'])[0]
             if isinstance(subject, bytes):
-                subject = subject.decode(encoding)
+                subject = subject.decode(encoding if encoding else 'utf-8')
 
             if ' is your login code for Zora' not in subject or len(subject) != 34:
                 continue
 
             code = subject.split(' ')[0]
 
-            resp = self.sess.post('https://auth.privy.io/api/v1/passwordless/link', json={
+            resp = self.sess.post('https://privy.zora.co/api/v1/passwordless/link', json={
                 'code': code,
                 'email': email_username,
-            }, headers=self.privy_headers)
+            }, headers=self.privy_headers, cookies=self.cookies)
             if resp.status_code != 200:
                 raise Exception(f'Verify email bad status code: {resp.status_code}, response = {resp.text}')
             return True
@@ -220,7 +210,7 @@ class Zora:
             set_success, verified = self.set_email(email_info)
             if verified:
                 logger.success(f'{self.idx}) Email was already set and verified')
-                return
+                return True
             if not set_success:
                 raise Exception(f'Can\'t set email')
         except Exception as e:
@@ -320,7 +310,8 @@ def main():
         logger.info(f'{idx}) Processing {client.address}')
 
         try:
-            client.link_email(email_info)
+            if client.link_email(email_info):
+                continue
             logger.success(f'{idx}) Email verified')
         except Exception as e:
             logger.error(f'{idx}) {str(e)}')

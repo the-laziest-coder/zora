@@ -70,6 +70,7 @@ MINTER_ADDRESSES = {
         'Optimism': '0x3678862f04290E565cCA2EF163BAeb92Bb76790C',
         'Zora': '0x04E2516A2c207E84a1839755675dfd8eF6302F0a',
         'Base': '0xFF8B0f870ff56870Dc5aBd6cB3E6E89c8ba2e062',
+        'Arbitrum': '0x1Cd1C1f3b8B779B50Db23155F2Cb244FCcA06B21',
     },
     'Other': {
         'Ethereum': '0x8A1DBE9b1CeB1d17f92Bebf10216FCFAb5C3fbA7',
@@ -97,6 +98,7 @@ ZORA_CHAINS_MAP = {
     'oeth': 'Optimism',
     'zora': 'Zora',
     'base': 'Base',
+    'arb': 'Arbitrum',
 }
 
 MINT_FUN_DATA_SUFFIX = '0021fb3f'
@@ -113,6 +115,7 @@ PROTOCOL_REWARDS_ADDRESSES = {
     ],
     'Optimism': [],
     'Base': ['0x7777777F279eba3d3Ad8F4E708545291A6fDBA8B'],
+    'Arbitrum': ['0x7777777F279eba3d3Ad8F4E708545291A6fDBA8B'],
 }
 PROTOCOL_REWARDS_ABI = json.load(open('abi/protocol_rewards.json'))
 

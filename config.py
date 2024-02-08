@@ -59,16 +59,16 @@ BASE_LOW_GAS = True
 # Формат - <действие>: (<минимальное кол-во>, <максимальное кол-во>)
 # Для каждого акка и действия выбирается рандомное кол-во транзакций в указанном диапазоне
 MODULES = {
-    'mint': (1, 1),
-    'admin': (0, 0),
-    'create': (0, 0),
-    'update': (0, 0),
+    'mint': (0, 0),
+    'admin': (1, 2),
+    'create': (0, 1),
+    'update': (1, 2),
     'bridge': (0, 0),
     'claim': (1, 1),
 }
 
 # В каких сетях минтить NFT. Все NFT из files/mints.txt в других сетях, будут игнорироваться
-MINT_CHAINS = ['Zora']
+MINT_CHAINS = ['Zora', 'Arbitrum']
 # Минтить только custom NFT, пропуская все остальные из files/mints.txt
 MINT_ONLY_CUSTOM = False
 # Если у вас есть mint.fun Pass, то добавятся поинты за минты

@@ -796,7 +796,7 @@ class Runner:
                                 f'&direction=desc'
                                 f'&limit=1000'
                                 f'&includeTokens=all'
-                                f'&excludeBrokenContracts=false')
+                                f'&excludeBrokenContracts=false', proxies=self.http_proxies)
         if resp_raw.status_code != 200:
             raise Exception(f'status_code = {resp_raw.status_code}, response = {resp_raw.text}')
         try:
