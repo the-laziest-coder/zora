@@ -109,7 +109,7 @@ class Zora:
         signature = self.account.sign_message(message).signature.hex()
 
         resp = self.sess.post('https://privy.zora.co/api/v1/siwe/authenticate', json={
-            'chainId': 'eip155:7777777',
+            'chainId': 'eip155:1',
             'connectorType': 'injected',
             'message': msg,
             'signature': signature,

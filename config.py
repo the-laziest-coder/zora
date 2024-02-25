@@ -32,7 +32,7 @@ GET_TELEGRAM_CHAT_ID = False
 # Максимальный газ прайс в Gwei, при котором делать транзакции в Ethereum
 MAX_ETH_GAS_PRICE = 15
 # Максимальный газ прайс в Gwei в Ethereum, при котором делать транзакции в L2 сетях
-MAX_ETH_GAS_PRICE_FOR_L2 = 40
+MAX_ETH_GAS_PRICE_FOR_L2 = 50
 
 # Сколько секунд ждать до следующей проверки газ прайса
 WAIT_GAS_TIME = 60
@@ -59,7 +59,7 @@ BASE_LOW_GAS = True
 # Формат - <действие>: (<минимальное кол-во>, <максимальное кол-во>)
 # Для каждого акка и действия выбирается рандомное кол-во транзакций в указанном диапазоне
 MODULES = {
-    'mint': (0, 0),
+    'mint': (1, 1),
     'admin': (1, 2),
     'create': (0, 1),
     'update': (1, 2),
@@ -68,7 +68,7 @@ MODULES = {
 }
 
 # В каких сетях минтить NFT. Все NFT из files/mints.txt в других сетях, будут игнорироваться
-MINT_CHAINS = ['Zora', 'Arbitrum']
+MINT_CHAINS = ['Zora', 'Arbitrum', 'Base']
 # Минтить только custom NFT, пропуская все остальные из files/mints.txt
 MINT_ONLY_CUSTOM = False
 # Если у вас есть mint.fun Pass, то добавятся поинты за минты
@@ -139,3 +139,6 @@ UPDATE_EMAIL_IF_VERIFIED = False
 
 # Сколько потоков использовать для чекера
 CHECKER_THREADS = 10
+
+
+REF = ''

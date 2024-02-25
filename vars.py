@@ -65,6 +65,9 @@ ZORA_ERC1155_ABI = json.load(open('abi/zora_erc_1155.json'))
 CUSTOM_ERC721_ABI = json.load(open('abi/custom_erc721.json'))
 
 MINTER_ADDRESSES = {
+    '2.7.0': {
+        'Base': '0x04E2516A2c207E84a1839755675dfd8eF6302F0a',
+    },
     '2.0.0': {
         'Ethereum': '0x04E2516A2c207E84a1839755675dfd8eF6302F0a',
         'Optimism': '0x3678862f04290E565cCA2EF163BAeb92Bb76790C',

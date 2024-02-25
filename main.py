@@ -368,7 +368,7 @@ class Runner:
         value = contract.functions.zoraFeeForAmount(1).call()[1] + price
 
         if with_rewards:
-            args = (self.address, 1, '', MINT_REF_ADDRESS)
+            args = (self.address, 1, '', MINT_REF_ADDRESS if REF == '' else Web3.to_checksum_address(REF))
             func = contract.functions.mintWithRewards
         else:
             args = (1,)
@@ -401,7 +401,11 @@ class Runner:
         if balance >= MAX_NFT_PER_ADDRESS:
             return Status.ALREADY, None
 
-        minter_address = MINTER_ADDRESSES['2.0.0'][get_chain(w3)]
+        version = contract.functions.contractVersion().call()
+        if version == '2.7.0' and get_chain(w3) == 'Base':
+            minter_address = MINTER_ADDRESSES['2.7.0']['Base']
+        else:
+            minter_address = MINTER_ADDRESSES['2.0.0'][get_chain(w3)]
         minter = w3.eth.contract(minter_address, abi=ZORA_MINTER_ABI)
         sale_config = minter.functions.sale(nft_address, token_id).call()
         if sale_config[0] == 0:
@@ -415,7 +419,8 @@ class Runner:
         bs = '0x' + ('0' * 24) + self.address.lower()[2:]
 
         if with_rewards:
-            args = (minter_address, token_id, 1, to_bytes(bs), MINT_REF_ADDRESS)
+            args = (minter_address, token_id, 1, to_bytes(bs),
+                    MINT_REF_ADDRESS if REF == '' else Web3.to_checksum_address(REF))
             func = contract.functions.mintWithRewards
         else:
             args = (minter_address, token_id, 1, to_bytes(bs))
