@@ -32,7 +32,7 @@ GET_TELEGRAM_CHAT_ID = False
 # Максимальный газ прайс в Gwei, при котором делать транзакции в Ethereum
 MAX_ETH_GAS_PRICE = 15
 # Максимальный газ прайс в Gwei в Ethereum, при котором делать транзакции в L2 сетях
-MAX_ETH_GAS_PRICE_FOR_L2 = 50
+MAX_ETH_GAS_PRICE_FOR_L2 = 80
 
 # Сколько секунд ждать до следующей проверки газ прайса
 WAIT_GAS_TIME = 60
@@ -43,9 +43,16 @@ TOTAL_WAIT_GAS_TIME = 360000
 ###############################################################################################################
 
 # Использовать Max base fee и Priority fee 0.005 для минта в Zora, экономия 0.3-0.5$
-ZORA_LOW_GAS = True
+ZORA_LOW_GAS = False
 # Использовать Max base fee и Priority fee 0.005 для минта в Base, экономия 0.3-0.5$
-BASE_LOW_GAS = True
+BASE_LOW_GAS = False
+
+###############################################################################################################
+
+OKX_API_KEY = ''
+OKX_SECRET_KEY = ''
+OKX_PASSPHRASE = ''
+OKX_WITHDRAW_ETH_AMOUNT = (0.007, 0.01)
 
 ###############################################################################################################
 
@@ -59,16 +66,16 @@ BASE_LOW_GAS = True
 # Формат - <действие>: (<минимальное кол-во>, <максимальное кол-во>)
 # Для каждого акка и действия выбирается рандомное кол-во транзакций в указанном диапазоне
 MODULES = {
-    'mint': (1, 1),
-    'admin': (1, 2),
-    'create': (0, 1),
-    'update': (1, 2),
+    'mint': (2, 3),
+    'admin': (0, 0),
+    'create': (0, 0),
+    'update': (0, 0),
     'bridge': (0, 0),
-    'claim': (1, 1),
+    'claim': (0, 0),
 }
 
-# В каких сетях минтить NFT. Все NFT из files/mints.txt в других сетях, будут игнорироваться
-MINT_CHAINS = ['Zora', 'Arbitrum', 'Base']
+# Добавлять рандомный комментарий к минту
+MINT_WITH_COMMENT = True
 # Минтить только custom NFT, пропуская все остальные из files/mints.txt
 MINT_ONLY_CUSTOM = False
 # Если у вас есть mint.fun Pass, то добавятся поинты за минты
@@ -111,6 +118,12 @@ UPDATE_COLLECTION_ERC1155 = True
 # Обновлять название/описание/картинку NFT
 UPDATE_NFT_ERC1155 = True
 
+# Вместо оф бриджа делать инстант бридж из Arbitrum, Optimism или Base
+USE_INSTANT_BRIDGE = True
+# При REFUEL_WITH_INSTANT_BRIDGE = True, из какой сети делать бридж,
+# Доступные сети: 'Arbitrum', 'Optimism', 'Base' или 'Any' - бридж из сети с максимальным балансом
+BRIDGE_SOURCE_CHAIN = 'Any'
+
 # При True, если для минта или создания NFT в Зоре не хватает эфира, автоматически делать бридж
 AUTO_BRIDGE = True
 # Сколько максимум авто-бриджей скрипт может сделать на один акк
@@ -119,12 +132,6 @@ AUTO_BRIDGE_MAX_CNT = 1
 BRIDGE_AMOUNT = (0.005, 0.0065)
 # Сколько максимум ждать бриджа. Баланс проверяется каждые 20 секунд
 BRIDGE_WAIT_TIME = 300
-
-# Вместо оф бриджа делать рефуел из Arbitrum или Optimism в Zora через Zerius
-REFUEL_WITH_ZERIUS = True
-# При BRIDGE_WITH_ZERIUS = True, из какой сети делать рефуел,
-# Доступные сети: 'Arbitrum', 'Optimism'
-ZERIUS_SOURCE_CHAIN = 'Optimism'
 
 # Если ревардов меньше, чем указанная сумма, то клема не будет.
 MIN_REWARDS_TO_CLAIM = 0.001

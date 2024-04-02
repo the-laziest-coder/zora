@@ -1,15 +1,13 @@
-https://zora.co/collect/zora:0xb61dd2318108b88bf25a16a30fd852c85e9ba6a5/3
-https://zora.co/collect/zora:0xc76b14474c3144804a646a293f275f25ee72a346
-https://zora.co/collect/zora:0xb61dd2318108b88bf25a16a30fd852c85e9ba6a5/2
-https://zora.co/collect/zora:0x7cf0ee1c25966cae6494f061fffcda1789b274a5
-https://zora.co/collect/zora:0x48378bbf8948ffe4f32fa58646b7d7fe624de922
-https://zora.co/collect/zora:0xb61dd2318108b88bf25a16a30fd852c85e9ba6a5/1
-https://zora.co/collect/base:0xea5ec078ad2d6ae3133b689aff4e12783243c39d
-https://zora.co/collect/base:0x541e070befeda627ac5f8de68cd2673e28098a4a/2
-https://zora.co/collect/base:0x541e070befeda627ac5f8de68cd2673e28098a4a/1
-custom:zora:0x9eAE90902a68584E93a83D7638D3a95ac67FC446:10:0.00008
-custom:zora:0x4073a52A3fc328D489534Ab908347eC1FcB18f7f:10:0.00008
-custom:zora:0xA85B9F9154db5bd9C0b7F869bC910a98ba1b7A87:10:0.00008
-zerius
-zerius
-zerius
+https://zora.co/collect/zora:0xb61dd2318108b88bf25a16a30fd852c85e9ba6a5/4
+
+# with $enjoy
+https://zora.co/collect/zora:0x9ab830affc088401b6ee98098be20ea4d0f505a3/1
+https://zora.co/collect/zora:0x9ab830affc088401b6ee98098be20ea4d0f505a3/2
+https://zora.co/collect/zora:0x9ab830affc088401b6ee98098be20ea4d0f505a3/3
+
+# with $imagine
+https://zora.co/collect/zora:0x160247177f2ca85cef8e1a8eb979fec228df4d66/1
+https://zora.co/collect/zora:0x160247177f2ca85cef8e1a8eb979fec228df4d66/2
+https://zora.co/collect/zora:0x160247177f2ca85cef8e1a8eb979fec228df4d66/3
+https://zora.co/collect/zora:0x160247177f2ca85cef8e1a8eb979fec228df4d66/4
+# 777 $imagine https://zora.co/collect/zora:0x160247177f2ca85cef8e1a8eb979fec228df4d66/5

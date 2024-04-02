@@ -137,3 +137,8 @@ ZERIUS_REFUEL_ADDRESSES = {
     'Zora': '0x1fe2c567169d39CCc5299727FfAC96362b2Ab90E',
 }
 ZERIUS_REFUEL_ABI = json.load(open('abi/zerius_refuel.json'))
+
+ERC_20_ABI = json.load(open('abi/erc20_token.json'))
+
+ERC20_MINTER = '0x777777E8850d8D6d98De2B5f64fae401F96eFF31'
+ERC20_MINTER_ABI = json.load(open('abi/erc20_minter.json'))

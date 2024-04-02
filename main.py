@@ -16,12 +16,14 @@ from pathlib import Path
 from datetime import datetime
 from requests_toolbelt import MultipartEncoder
 from eth_account.account import Account
-from eth_abi.packed import encode_packed
+import eth_abi
 
 from logger import Logger, get_telegram_bot_chat_id
 from utils import *
 from config import *
 from vars import *
+import okx
+
 
 colorama.init()
 
@@ -49,8 +51,6 @@ def parse_mint_link(link):
         token_id = 'custom'
         nft_info = link[7 + len(chain) + 1:]
         chain = ZORA_CHAINS_MAP[chain]
-        if chain not in MINT_CHAINS:
-            return None
         return chain, nft_info, token_id
     if MINT_ONLY_CUSTOM:
         return None
@@ -64,8 +64,6 @@ def parse_mint_link(link):
     else:
         nft_address, token_id = nft_info, None
     chain = ZORA_CHAINS_MAP[chain]
-    if chain not in MINT_CHAINS:
-        return None
     nft_address = Web3.to_checksum_address(nft_address)
     token_id = int(token_id) if token_id else None
     return chain, nft_address, token_id
@@ -222,9 +220,12 @@ class Runner:
     def get_native_balance(self, chain):
         return self.w3(chain).eth.get_balance(self.address)
 
-    def build_and_send_tx(self, w3, func, action, value=0, tx_change_func=None):
+    def send_tx(self, w3, tx, action, tx_change_func=None):
+        return send_tx(w3, self.private_key, tx, self.tx_verification, action, tx_change_func)
+
+    def build_and_send_tx(self, w3, func, action, value=0, tx_change_func=None, simulate=False):
         return build_and_send_tx(w3, self.address, self.private_key, func, value, self.tx_verification, action,
-                                 tx_change_func=tx_change_func)
+                                 tx_change_func=tx_change_func, simulate=simulate)
 
     def wait_for_eth_gas_price(self, current_w3):
         w3 = self.w3('Ethereum')
@@ -252,74 +253,142 @@ class Runner:
         if init_balance >= self.get_native_balance('Zora'):
             raise RunnerException('Bridge takes too long')
 
-        logger.print('Assets bridged successfully')
+        logger.print('Assets bridged successfully', color='green')
 
-    def refuel_zerius(self):
-        w3 = self.w3(ZERIUS_SOURCE_CHAIN)
+    def get_reservoir_action_tx(self, w3, dst_chain, tx_data, is_bridge=True):
+        body = {
+            'originChainId': w3.current_chain_id,
+            'txs': [tx_data],
+            'user': self.address,
+        }
+        headers = {
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
+            'Cache-Control': 'no-cache',
+            'Origin': 'https://bridge.zora.energy',
+            'Pragma': 'no-cache',
+            'Referer': 'https://bridge.zora.energy/',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'cross-site',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"macOS"',
+            'X-Rkc-Version': '1.11.2',
+        }
+        if not is_bridge:
+            headers.update({
+                'Origin': 'https://zora.co',
+                'Referer': 'https://zora.co/',
+                'X-Rkc-Version': '2.0.8',
+                'X-Rkui-Version': '2.3.9',
+            })
+        try:
+            api_name = 'api'
+            if dst_chain != 'Ethereum':
+                api_name = f'api-{dst_chain.lower()}'
+            resp = requests.post(f'https://{api_name}.reservoir.tools/execute/call/v1',
+                                 json=body, headers=headers, proxies=self.http_proxies)
+            try:
+                tx = resp.json()
+                tx = tx['steps'][0]['items'][0]['data']
+            except Exception as e:
+                raise Exception(f'{e}: Status = {resp.status_code}. Response = {resp.text}')
+        except Exception as e:
+            raise Exception(f'Get Relayer tx data failed: {e}')
+
+        tx['nonce'] = w3.eth.get_transaction_count(self.address)
+        tx['data'] = to_bytes(tx['data'])
+        tx['value'] = int(tx['value'])
+        tx['from'] = Web3.to_checksum_address(tx['from'])
+        tx['to'] = Web3.to_checksum_address(tx['to'])
+
+        del tx['gasLimit']
+
+        max_priority_fee = w3.eth.max_priority_fee
+        latest_block = w3.eth.get_block("latest")
+        max_fee_per_gas = max_priority_fee + int(latest_block["baseFeePerGas"] * random.uniform(1.15, 1.2))
+        tx['maxPriorityFeePerGas'] = max_priority_fee
+        tx['maxFeePerGas'] = max_fee_per_gas
+
+        return tx
+
+    def withdraw_from_okx(self):
+        if OKX_API_KEY == '' or OKX_SECRET_KEY == '' or OKX_PASSPHRASE == '':
+            return False
+        chain = BRIDGE_SOURCE_CHAIN
+        if chain == 'Any':
+            chain = random.choice(['Arbitrum', 'Base', 'Optimism'])
+        logger.print(f'Withdrawing funds from OKX to {chain}')
+        w3 = self.w3(chain)
+        balance = w3.eth.get_balance(self.address)
+        try:
+            amount = okx.withdraw_native(self.address, chain)
+            logger.print(f'Withdraw of {"%.4f" % amount} ETH was initiated')
+        except Exception as e:
+            logger.print(f'Withdraw failed: {str(e)}', color='red')
+            return False
+        logger.print(f'Waiting for funds 70s')
+        time.sleep(70)
+        t = 70
+        while t < 300:
+            if w3.eth.get_balance(self.address) > balance:
+                logger.print(f'Funds have been received from OKX', color='green')
+                return True
+            logger.print(f'Funds have not arrived yet. Waiting for 10s')
+            t += 10
+            time.sleep(10)
+        logger.print(f'Funds did not arrived after 300s', color='red')
+        return False
+
+    def instant_bridge(self, try_okx=True):
+        src_chain = BRIDGE_SOURCE_CHAIN
+        if src_chain == 'Any':
+            logger.print('Searching for chain with the largest balance')
+            max_balance = -1
+            for chain in ['Arbitrum', 'Base', 'Optimism']:
+                bal = self.w3(chain).eth.get_balance(self.address)
+                if bal > max_balance:
+                    max_balance = bal
+                    src_chain = chain
+
+        w3 = self.w3(src_chain)
 
         self.wait_for_eth_gas_price(w3)
 
         balance = w3.eth.get_balance(self.address)
         balance = int_to_decimal(balance, NATIVE_DECIMALS)
-
-        eth_gas_mult = int_to_decimal(self.w3('Ethereum').eth.gas_price, 9) / 30 * 1.5
-        if ZERIUS_SOURCE_CHAIN == 'Arbitrum':
-            balance -= 0.00025 * eth_gas_mult
-        else:
-            balance -= 0.0001 * eth_gas_mult
-
-        if balance < BRIDGE_AMOUNT[0] / 2:
-            raise Exception(f'Low balance on {ZERIUS_SOURCE_CHAIN}')
+        if balance - 0.0003 < BRIDGE_AMOUNT[0]:
+            if try_okx and self.withdraw_from_okx():
+                wait_next_tx()
+                return self.instant_bridge(try_okx=False)
+            else:
+                raise InsufficientFundsException(f'Low balance for bridge [{"%.5f" % balance}]', src_chain)
+        balance -= 0.0003
 
         amount = random.uniform(min(balance, BRIDGE_AMOUNT[0]), min(balance, BRIDGE_AMOUNT[1]))
         amount = round(amount, random.randint(4, 6))
 
-        value = Web3.to_wei(amount, 'ether')
-
-        contract = w3.eth.contract(ZERIUS_REFUEL_ADDRESSES[ZERIUS_SOURCE_CHAIN], abi=ZERIUS_REFUEL_ABI)
-
-        min_dst_gas_lookup = contract.functions.minDstGasLookup(LZ_CHAIN_IDS['Zora'], 0).call()
-        adapter_params = encode_packed(
-            ['uint16', 'uint256', 'uint256', 'address'],
-            [2, min_dst_gas_lookup, value, self.address]
-        )
-        dst_contract_address = encode_packed(['address'], [ZERIUS_REFUEL_ADDRESSES['Zora']])
-
-        send_fee = contract.functions.estimateSendFee(LZ_CHAIN_IDS['Zora'], dst_contract_address, adapter_params).call()
-
-        additional_fee = send_fee[0] - value
-        additional_fee = int_to_decimal(additional_fee, NATIVE_DECIMALS)
-
-        balance -= additional_fee
-        if balance < BRIDGE_AMOUNT[0] / 2:
-            raise Exception(f'Low balance on {ZERIUS_SOURCE_CHAIN}')
-
-        amount = random.uniform(min(balance, BRIDGE_AMOUNT[0]), min(balance, BRIDGE_AMOUNT[1]))
-        amount = round(amount, random.randint(4, 6))
-
-        logger.print(f'Refueling {amount} ETH from {ZERIUS_SOURCE_CHAIN}')
+        logger.print(f'Instant Bridging {amount} ETH from {src_chain}')
 
         value = Web3.to_wei(amount, 'ether')
 
-        adapter_params = encode_packed(
-            ['uint16', 'uint256', 'uint256', 'address'],
-            [2, min_dst_gas_lookup, value, self.address]
-        )
-        send_fee = contract.functions.estimateSendFee(LZ_CHAIN_IDS['Zora'], dst_contract_address, adapter_params).call()
+        tx = self.get_reservoir_action_tx(w3, 'Zora', {
+            'data': '0x',
+            'to': self.address,
+            'value': str(value),
+        })
 
-        self.build_and_send_tx(
-            w3,
-            contract.functions.refuel(LZ_CHAIN_IDS['Zora'], dst_contract_address, adapter_params),
-            value=send_fee[0],
-            action='Zerius Refuel',
-        )
+        self.send_tx(w3, tx, 'Instant Bridge')
 
         return Status.SUCCESS
 
     @runner_func('Bridge')
-    def bridge(self):
-        if REFUEL_WITH_ZERIUS:
-            return self.refuel_zerius()
+    def _bridge(self):
+        if USE_INSTANT_BRIDGE:
+            return self.instant_bridge()
 
         w3 = self.w3('Ethereum')
 
@@ -352,11 +421,87 @@ class Runner:
 
         return Status.SUCCESS
 
+    def bridge(self):
+        try:
+            self._bridge()
+        except InsufficientFundsException as e:
+            raise InsufficientFundsException(e.msg, e.chain, 'bridge' if e.action is None else e.action)
+
+    def swap(self, w3, token_to, amount_out):
+        token = w3.eth.contract(token_to, abi=ERC_20_ABI)
+        symbol = token.functions.symbol().call()
+        decimals = token.functions.decimals().call()
+
+        if token.functions.balanceOf(self.address).call() >= amount_out:
+            logger.print(f'Enough ${symbol} balance')
+            return
+
+        logger.print(f'Swapping ETH for {"%.4f" % int_to_decimal(amount_out, decimals)} ${symbol}')
+
+        amount = int(amount_out * 1.0)
+        body = {
+            'amount': str(amount),
+            'configs': [{
+                'enableFeeOnTransferFeeFetching': True,
+                'enableUniversalRouter': True,
+                'protocols': ['V3'],
+                'recipient': self.address,
+                'routingType': 'CLASSIC',
+            }],
+            'intent': 'quote',
+            'sendPortionEnabled': False,
+            'tokenIn': 'ETH',
+            'tokenInChainId': w3.current_chain_id,
+            'tokenOut': token_to,
+            'tokenOutChainId': w3.current_chain_id,
+            'type': 'EXACT_OUTPUT',
+        }
+        headers = {
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
+            'Cache-Control': 'no-cache',
+            'Origin': 'https://swap.zora.energy',
+            'Pragma': 'no-cache',
+            'Referer': 'https://swap.zora.energy/',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-site',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"macOS"',
+            'X-Rkc-Version': '1.11.2',
+        }
+        resp = requests.post('https://api.swap.zora.energy/quote',
+                             json=body, headers=headers, proxies=self.http_proxies)
+
+        try:
+            quote = resp.json()['quote']['methodParameters']
+        except Exception as e:
+            raise Exception(f'Quote failed: {e}. Status = {resp.status_code}, Response = {resp.text}')
+
+        tx = {
+            'chainId': w3.current_chain_id,
+            'nonce': w3.eth.get_transaction_count(self.address),
+            'from': self.address,
+            'to': Web3.to_checksum_address(quote['to']),
+            'data': to_bytes(quote['calldata']),
+            'value': int(quote['value'], 16),
+        }
+        max_priority_fee = w3.eth.max_priority_fee
+        latest_block = w3.eth.get_block("latest")
+        max_fee_per_gas = max_priority_fee + int(latest_block["baseFeePerGas"] * random.uniform(1.15, 1.2))
+        tx['maxPriorityFeePerGas'] = max_priority_fee
+        tx['maxFeePerGas'] = max_fee_per_gas
+
+        self.send_tx(w3, tx, 'Swap for $' + symbol)
+
     def mint_fun_tx_change(self, tx):
         if self.with_mint_fun:
             tx['data'] = tx['data'] + MINT_FUN_DATA_SUFFIX
 
-    def _mint_erc721(self, w3, nft_address, with_rewards=True):
+    def _mint_erc721(self, w3, nft_address, simulate, with_rewards=True):
         contract = w3.eth.contract(nft_address, abi=ZORA_ERC721_ABI)
 
         balance = contract.functions.balanceOf(self.address).call()
@@ -368,38 +513,75 @@ class Runner:
         value = contract.functions.zoraFeeForAmount(1).call()[1] + price
 
         if with_rewards:
-            args = (self.address, 1, '', MINT_REF_ADDRESS if REF == '' else Web3.to_checksum_address(REF))
+            comment = ' '.join(get_random_words(random.randint(1, 3))).capitalize() if MINT_WITH_COMMENT else ''
+            args = (self.address, 1, comment, MINT_REF_ADDRESS if REF == '' else Web3.to_checksum_address(REF))
             func = contract.functions.mintWithRewards
         else:
             args = (1,)
             func = contract.functions.purchase
 
-        tx_hash = self.build_and_send_tx(
+        tx_hash_or_data = self.build_and_send_tx(
             w3,
             func(*args),
             action='Mint ERC721',
             value=value,
             tx_change_func=self.mint_fun_tx_change,
+            simulate=simulate,
         )
 
-        return Status.SUCCESS, tx_hash
+        return Status.SUCCESS, tx_hash_or_data
 
     @runner_func('Mint ERC721')
-    def mint_erc721(self, w3, nft_address):
+    def mint_erc721(self, w3, nft_address, simulate):
         try:
-            return self._mint_erc721(w3, nft_address)
+            return self._mint_erc721(w3, nft_address, simulate)
         except web3.exceptions.ContractLogicError as e:
             if 'execution reverted' in str(e):
-                return self._mint_erc721(w3, nft_address, with_rewards=False)
+                return self._mint_erc721(w3, nft_address, simulate, with_rewards=False)
             else:
                 raise e
 
-    def _mint_erc1155(self, w3, nft_address, token_id, with_rewards=True):
+    def _mint_with_erc20(self, w3, nft_address, token_id, erc20_minter, erc20_token, erc20_price):
+        self.wait_for_eth_gas_price(w3)
+        self.swap(w3, erc20_token, erc20_price)
+        wait_next_tx()
+        erc20 = w3.eth.contract(erc20_token, abi=ERC_20_ABI)
+        symbol = erc20.functions.symbol().call()
+        if erc20.functions.allowance(self.address, ERC20_MINTER).call() < erc20_price:
+            self.build_and_send_tx(w3, erc20.functions.approve(ERC20_MINTER, erc20_price), f'Approve ${symbol}')
+            wait_next_tx()
+        comment = ' '.join(get_random_words(random.randint(1, 3))).capitalize() if MINT_WITH_COMMENT else ''
+        args = (self.address, 1, nft_address, token_id, erc20_price, erc20_token, MINT_REF_ADDRESS, comment)
+        tx_hash = self.build_and_send_tx(w3, erc20_minter.functions.mint(*args), 'Mint with ERC20')
+        return Status.SUCCESS, tx_hash
+
+    @classmethod
+    def check_sale_config(cls, sale_config, minted_cnt):
+        now = int(time.time())
+        if now < sale_config[0]:
+            raise Exception(f'Mint has not started yet')
+        if now > sale_config[1]:
+            raise Exception(f'Mint has already ended')
+        if 0 < sale_config[2] <= minted_cnt:
+            return True
+        return None
+
+    def _mint_erc1155(self, w3, nft_address, token_id, simulate, with_rewards=True):
         contract = w3.eth.contract(nft_address, abi=ZORA_ERC1155_ABI)
 
         balance = contract.functions.balanceOf(self.address, token_id).call()
         if balance >= MAX_NFT_PER_ADDRESS:
             return Status.ALREADY, None
+
+        if get_chain(w3) == 'Zora' and not simulate and with_rewards:
+            erc20_minter = w3.eth.contract(ERC20_MINTER, abi=ERC20_MINTER_ABI)
+            sale_config = erc20_minter.functions.sale(nft_address, token_id).call()
+            erc20_token = sale_config[-1]
+            erc20_price = sale_config[3]
+            if erc20_token != ZERO_ADDRESS:
+                if self.check_sale_config(sale_config, balance):
+                    return Status.ALREADY, None
+                return self._mint_with_erc20(w3, nft_address, token_id, erc20_minter, erc20_token, erc20_price)
 
         version = contract.functions.contractVersion().call()
         if version == '2.7.0' and get_chain(w3) == 'Base':
@@ -412,11 +594,16 @@ class Runner:
             minter_address = MINTER_ADDRESSES['Other'][get_chain(w3)]
             minter = w3.eth.contract(minter_address, abi=ZORA_MINTER_ABI)
             sale_config = minter.functions.sale(nft_address, token_id).call()
-        price = sale_config[3]
 
+        if self.check_sale_config(sale_config, balance):
+            return Status.ALREADY, None
+
+        price = sale_config[3]
         value = contract.functions.mintFee().call() + price
 
-        bs = '0x' + ('0' * 24) + self.address.lower()[2:]
+        comment = ' '.join(get_random_words(random.randint(1, 3))).capitalize() if MINT_WITH_COMMENT else ''
+        mint_args = eth_abi.encode(['address', 'bytes'], [self.address, bytes(comment, 'utf-8')]).hex()
+        bs = '0x' + mint_args
 
         if with_rewards:
             args = (minter_address, token_id, 1, to_bytes(bs),
@@ -426,23 +613,24 @@ class Runner:
             args = (minter_address, token_id, 1, to_bytes(bs))
             func = contract.functions.mint
 
-        tx_hash = self.build_and_send_tx(
+        tx_hash_or_data = self.build_and_send_tx(
             w3,
             func(*args),
             action='Mint ERC1155',
             value=value,
             tx_change_func=self.mint_fun_tx_change,
+            simulate=simulate,
         )
 
-        return Status.SUCCESS, tx_hash
+        return Status.SUCCESS, tx_hash_or_data
 
     @runner_func('Mint ERC1155')
-    def mint_erc1155(self, w3, nft_address, token_id):
+    def mint_erc1155(self, w3, nft_address, token_id, simulate):
         try:
-            return self._mint_erc1155(w3, nft_address, token_id)
+            return self._mint_erc1155(w3, nft_address, token_id, simulate)
         except web3.exceptions.ContractLogicError as e:
             if 'execution reverted' in str(e):
-                return self._mint_erc1155(w3, nft_address, token_id, with_rewards=False)
+                return self._mint_erc1155(w3, nft_address, token_id, simulate, with_rewards=False)
             else:
                 raise e
 
@@ -501,23 +689,37 @@ class Runner:
             'source': 'projectPage',
         }, headers=get_default_mint_fun_headers(self.address), proxies=self.http_proxies)
 
-    def _mint(self, nft):
+    def _mint(self, nft, simulate=False):
         chain, nft_address, token_id = nft
         if token_id != 'custom' and token_id != 'zerius':
             nft_address = Web3.to_checksum_address(nft_address)
         w3 = self.w3(chain)
-        logger.print(f'Starting mint: {chain} - {nft_address}{"" if token_id is None else " - Token " + str(token_id)}')
+
+        suffix = ''
+        if simulate:
+            suffix = '. Preparing for mint from Zora'
+
+        logger.print(f'Starting mint: {chain} - {nft_address}'
+                     f'{"" if token_id is None else " - Token " + str(token_id)}'
+                     f'{suffix}')
 
         self.wait_for_eth_gas_price(w3)
 
         if token_id is None:
-            status, tx_hash = self.mint_erc721(w3, nft_address)
+            status, tx_hash = self.mint_erc721(w3, nft_address, simulate=simulate)
         elif token_id == 'custom':
+            if simulate:
+                raise Exception(f'Can\'t use Reservoir for non-Zora NFTs')
             status, tx_hash = self.mint_custom(w3, nft_address)
         elif token_id == 'zerius':
+            if simulate:
+                raise Exception(f'Simulate for Zerius???')
             status, tx_hash = self.mint_zerius(w3)
         else:
-            status, tx_hash = self.mint_erc1155(w3, nft_address, token_id)
+            status, tx_hash = self.mint_erc1155(w3, nft_address, token_id, simulate=simulate)
+
+        if simulate:
+            return tx_hash
 
         if status == Status.SUCCESS and tx_hash and token_id != 'zerius' and self.with_mint_fun:
             try:
@@ -529,7 +731,28 @@ class Runner:
 
         return status
 
-    def zora_action_wrapper(self, func, *args):
+    def zora_action_wrapper(self, func, *args, is_mint=False):
+
+        def auto_bridge_wrapper(run_func):
+            try:
+                return run_func(), False
+            except InsufficientFundsException as ife:
+                if ife.chain == 'Zora' and AUTO_BRIDGE:
+                    if self.address not in auto_bridged_cnt_by_address:
+                        auto_bridged_cnt_by_address[self.address] = 0
+
+                    if auto_bridged_cnt_by_address[self.address] > AUTO_BRIDGE_MAX_CNT:
+                        logger.print('Insufficient funds on Zora. But auto-bridge was already made max possible times')
+                        raise ife
+
+                    logger.print(f'Insufficient funds on Zora. Let\'s bridge')
+                    init_balance = self.get_native_balance(ife.chain)
+                    self.bridge()
+                    self.wait_for_bridge(init_balance)
+                    wait_next_tx()
+                    auto_bridged_cnt_by_address[self.address] += 1
+                    return run_func(), True
+                raise ife
 
         def run_action():
             try:
@@ -538,28 +761,31 @@ class Runner:
                 return Status.PENDING
 
         try:
-            return run_action(), False
+            return auto_bridge_wrapper(run_action)
         except InsufficientFundsException as e:
-            if e.chain == 'Zora' and AUTO_BRIDGE:
-                if self.address not in auto_bridged_cnt_by_address:
-                    auto_bridged_cnt_by_address[self.address] = 0
+            if e.chain != 'Zora' and is_mint and (e.action is None or e.action == 'mint'):
+                def run_action_from_zora():
+                    tx_data = func(*args, simulate=True)
+                    tx_data = {
+                        'data': tx_data['data'],
+                        'to': tx_data['to'].lower(),
+                        'value': str(tx_data['value']),
+                    }
+                    w3 = self.w3('Zora')
+                    tx = self.get_reservoir_action_tx(w3, e.chain, tx_data, is_bridge=False)
+                    try:
+                        self.send_tx(w3, tx, f'Mint on {e.chain} from Zora')
+                        return Status.SUCCESS
+                    except PendingException:
+                        return Status.PENDING
 
-                if auto_bridged_cnt_by_address[self.address] > AUTO_BRIDGE_MAX_CNT:
-                    logger.print('Insufficient funds on Zora. But auto-bridge was already made max possible times')
-                    raise e
+                logger.print(f'Insufficient funds on {e.chain}. Trying to mint from Zora')
+                return auto_bridge_wrapper(run_action_from_zora)
 
-                logger.print(f'Insufficient funds on Zora. Let\'s bridge')
-                init_balance = self.get_native_balance(e.chain)
-                self.bridge()
-                self.wait_for_bridge(init_balance)
-                wait_next_tx()
-                auto_bridged_cnt_by_address[self.address] += 1
-                return run_action(), True
-            else:
-                raise e
+            raise e
 
     def mint(self, nft):
-        return self.zora_action_wrapper(self._mint, nft)
+        return self.zora_action_wrapper(self._mint, nft, is_mint=True)
 
     def upload_ipfs(self, filename, data, ext):
         fields = {

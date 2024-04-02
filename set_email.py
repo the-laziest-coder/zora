@@ -46,7 +46,7 @@ def get_headers(address, additional_headers=None):
 class Zora:
 
     PRIVY_APP_ID = 'clpgf04wn04hnkw0fv1m11mnb'
-    PRIVY_CLIENT = 'react-auth:1.52.2'
+    PRIVY_CLIENT = 'react-auth:1.59.4'
 
     def __init__(self, idx, private_key, proxy):
         self.idx = idx
@@ -119,7 +119,7 @@ class Zora:
             raise Exception(f'Sign in bad status code: {resp.status_code}, response = {resp.text}')
         try:
             self.cookies.update({n: v for n, v in resp.cookies.items()})
-            self.sess.headers.update({'authorization': 'Bearer ' + resp.json()['token']})
+            self.sess.headers.update({'authorization': resp.json()['token']})
         except Exception as e:
             raise Exception(f'Sign in bad response: response = {resp.text}: {str(e)}')
 
@@ -131,24 +131,25 @@ class Zora:
 
     def get_existed_email(self):
         self.ensure_authorized()
-        resp = self.sess.get('https://zora.co/api/account', cookies=self.cookies)
+        url = 'https://zora.co/api/trpc/account.getAccount?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%7D%7D%7D'
+        resp = self.sess.get(url, cookies=self.cookies)
         if resp.status_code == 404:
-            return '', False
+            return '', False, True
         if resp.status_code != 200:
             raise Exception(f'Get account info bad status code: {resp.status_code}, response = {resp.text}')
         try:
-            if 'account' not in resp.json():
-                return '', False
-            return resp.json()['account']['emailAddress'], resp.json()['account']['emailVerified']
+            res = resp.json()
+            res = res[0]['result']['data']['json']
+            return res['emailAddress'], res['emailVerified'], False
         except Exception as e:
             raise Exception(f'Get account info bad response: response = {resp.text}: {str(e)}')
 
     def set_email(self, email_info):
         self.ensure_authorized()
         email_username, _ = tuple(email_info.split(':'))
-        existed_email, already_verified = self.get_existed_email()
+        existed_email, already_verified, is_new_acc = self.get_existed_email()
         if already_verified and not config.UPDATE_EMAIL_IF_VERIFIED:
-            return True, True
+            return True, True, is_new_acc
         if existed_email == '':
             logger.info(f'{self.idx}) Setting new email')
             resp = self.sess.post('https://privy.zora.co/api/v1/passwordless/init', json={
@@ -156,11 +157,11 @@ class Zora:
             }, headers=self.privy_headers, cookies=self.cookies)
         else:
             logger.info(f"{self.idx}) Email was already set")
-            return True, False
+            return True, False, is_new_acc
         if resp.status_code != 200:
             raise Exception(f'Set email bad status code: {resp.status_code}, response = {resp.text}')
         try:
-            return resp.json()['success'], False
+            return resp.json()['success'], False, is_new_acc
         except Exception as e:
             raise Exception(f'Set email bad response: response = {resp.text}: {str(e)}')
 
@@ -207,10 +208,10 @@ class Zora:
     @retry(tries=config.MAX_TRIES, delay=1.5, backoff=2, jitter=(0, 1))
     def link_email(self, email_info):
         try:
-            set_success, verified = self.set_email(email_info)
+            set_success, verified, is_new_acc = self.set_email(email_info)
             if verified:
                 logger.success(f'{self.idx}) Email was already set and verified')
-                return True
+                return True, is_new_acc
             if not set_success:
                 raise Exception(f'Can\'t set email')
         except Exception as e:
@@ -240,32 +241,43 @@ class Zora:
         if not verified:
             raise Exception(f'Failed to verify email')
 
+        return False, is_new_acc
+
     @retry(tries=config.MAX_TRIES, delay=1.5, backoff=2, jitter=(0, 1))
     def init_account(self, email_info):
         self.ensure_authorized()
 
         logger.info(f'{self.idx}) Init new Zora account')
-        resp = self.sess.post('https://zora.co/api/account/init', json={}, headers={
+
+        name = email_info.split(':')[0].split('@')[0]
+        url = 'https://zora.co/api/trpc/account.createAccount?batch=1'
+        body = {
+            0: {
+                'json': {
+                    'marketingOptIn': True,
+                    'profile': {
+                        'avatarUri': None,
+                        'description': None,
+                        'displayName': name.capitalize(),
+                    },
+                    'referrer': None,
+                    'username': name,
+                    'walletAddress': self.address,
+                },
+                'meta': {
+                    'values': {
+                        'profile.avatarUri': ['undefined'],
+                        'profile.description': ['undefined'],
+                        'referrer': ['undefined'],
+                    }
+                },
+            }
+        }
+        resp = self.sess.post(url, json=body, headers={
             'referrer': 'https://zora.co/onboarding',
         }, cookies=self.cookies)
         if resp.status_code != 200:
-            raise Exception(f'Failed to init account. Status = {resp.status_code}. Response = {resp.text}')
-
-        name = email_info.split(':')[0].split('@')[0]
-        resp = self.sess.post('https://zora.co/api/profile/create', json={
-            'displayName': name,
-            'marketingOptIn': True,
-            'walletAddress': self.address.lower(),
-        }, headers={
-            'referer': 'https://zora.co/onboarding',
-        }, cookies=self.cookies)
-        if resp.status_code != 200:
-            raise Exception(f'Create Zora profile bad status code: {resp.status_code}, response = {resp.text}')
-        try:
-            if not resp.json()['ok']:
-                raise Exception()
-        except Exception as e:
-            raise Exception(f'Create Zora profile bad response: response = {resp.text}: {str(e)}')
+            raise Exception(f'Failed to create Zora account. Status = {resp.status_code}. Response = {resp.text}')
 
 
 def main():
@@ -310,13 +322,16 @@ def main():
         logger.info(f'{idx}) Processing {client.address}')
 
         try:
-            if client.link_email(email_info):
-                continue
-            logger.success(f'{idx}) Email verified')
+            already_verified, is_new_acc = client.link_email(email_info)
+            if not already_verified:
+                logger.success(f'{idx}) Email verified')
         except Exception as e:
             logger.error(f'{idx}) {str(e)}')
             continue
 
+        if not is_new_acc:
+            logger.success(f'{idx}) Zora account was already created')
+            continue
         try:
             client.init_account(email_info)
             logger.success(f'{idx}) Zora profile created')

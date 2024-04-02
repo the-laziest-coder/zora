@@ -1,6 +1,8 @@
 import requests
+from typing import Dict
 from retry import retry
 from web3 import Web3
+from web3.providers import HTTPProvider
 from config import RPCs, ZORA_LOW_GAS, BASE_LOW_GAS, MAX_TRIES
 from vars import CHAIN_NAMES, EIP1559_CHAINS
 
@@ -21,12 +23,28 @@ class Web3WithChain(Web3):
         self.current_chain_id = current_chain_id
 
 
+class HTTPProviderWithUA(HTTPProvider):
+
+    def __init__(
+        self,
+        endpoint_uri: str = None,
+        request_kwargs=None,
+    ) -> None:
+        super().__init__(endpoint_uri, request_kwargs)
+
+    def get_request_headers(self) -> Dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        }
+
+
 @retry(tries=MAX_TRIES, delay=1.5, backoff=2, jitter=(0, 1))
 def get_w3(chain, proxy=None):
     req_args = {} if proxy is None or proxy == '' else {
         'proxies': {'https': proxy, 'http': proxy},
     }
-    return Web3WithChain(Web3.HTTPProvider(RPCs[chain], request_kwargs=req_args))
+    return Web3WithChain(HTTPProviderWithUA(RPCs[chain], request_kwargs=req_args))
 
 
 def get_chain(w3):
@@ -39,15 +57,19 @@ def to_bytes(hex_str):
 
 class InsufficientFundsException(Exception):
 
-    def __init__(self, prefix='', chain=None):
-        super().__init__(prefix + 'Insufficient funds on ' + str(chain))
+    def __init__(self, msg='', chain=None, action=None):
+        if msg == '':
+            msg = 'Insufficient funds'
+        super().__init__(msg + ' on ' + str(chain))
+        self.msg = msg
         self.chain = chain
+        self.action = action
 
 
 def send_tx(w3, private_key, tx, verify_func, action, tx_change_func=None):
     try:
         estimate = w3.eth.estimate_gas(tx)
-        tx['gas'] = int(estimate * 1.2)
+        tx['gas'] = int(estimate * 1.1)
 
         if tx_change_func:
             tx_change_func(tx)
@@ -63,12 +85,14 @@ def send_tx(w3, private_key, tx, verify_func, action, tx_change_func=None):
         raise e
 
 
-def build_and_send_tx(w3, address, private_key, func, value, verify_func, action, tx_change_func=None):
+def build_and_send_tx(w3, address, private_key, func, value, verify_func, action, tx_change_func=None, simulate=False):
     tx_data = {
         'from': address,
         'nonce': w3.eth.get_transaction_count(address),
         'value': value,
     }
+    if simulate:
+        tx_data['gas'] = 1
 
     gas_price = w3.eth.gas_price
     chain = get_chain(w3)
@@ -93,5 +117,8 @@ def build_and_send_tx(w3, address, private_key, func, value, verify_func, action
         if 'insufficient funds' in str(e) or 'gas required exceeds allowance' in str(e):
             raise InsufficientFundsException(chain=chain)
         raise e
+
+    if simulate:
+        return tx
 
     return send_tx(w3, private_key, tx, verify_func, action, tx_change_func=tx_change_func)
