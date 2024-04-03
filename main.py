@@ -73,6 +73,28 @@ def get_random_words(n: int):
     return [random.choice(english_words) for _ in range(n)]
 
 
+def generate_comment():
+    if not MINT_WITH_COMMENT:
+        return ''
+    words = []
+    for w in random.sample(COMMENT_WORDS, random.randint(1, 3)):
+        word = w
+        rnd = random.randint(1, 3)
+        if rnd == 1:
+            word = word.capitalize()
+        elif rnd == 2:
+            word = word.upper()
+        else:
+            word = word.lower()
+        words.append(word)
+    comment = ' '.join(words)
+    if random.randint(1, 7) <= 2:
+        comment += '!'
+        if random.randint(1, 3) == 1:
+            comment += '!!'
+    return comment
+
+
 def decimal_to_int(d, n):
     return int(d * (10 ** n))
 
@@ -513,7 +535,7 @@ class Runner:
         value = contract.functions.zoraFeeForAmount(1).call()[1] + price
 
         if with_rewards:
-            comment = ' '.join(get_random_words(random.randint(1, 3))).capitalize() if MINT_WITH_COMMENT else ''
+            comment = generate_comment()
             args = (self.address, 1, comment, MINT_REF_ADDRESS if REF == '' else Web3.to_checksum_address(REF))
             func = contract.functions.mintWithRewards
         else:
@@ -550,7 +572,7 @@ class Runner:
         if erc20.functions.allowance(self.address, ERC20_MINTER).call() < erc20_price:
             self.build_and_send_tx(w3, erc20.functions.approve(ERC20_MINTER, erc20_price), f'Approve ${symbol}')
             wait_next_tx()
-        comment = ' '.join(get_random_words(random.randint(1, 3))).capitalize() if MINT_WITH_COMMENT else ''
+        comment = generate_comment()
         args = (self.address, 1, nft_address, token_id, erc20_price, erc20_token, MINT_REF_ADDRESS, comment)
         tx_hash = self.build_and_send_tx(w3, erc20_minter.functions.mint(*args), 'Mint with ERC20')
         return Status.SUCCESS, tx_hash
@@ -601,7 +623,7 @@ class Runner:
         price = sale_config[3]
         value = contract.functions.mintFee().call() + price
 
-        comment = ' '.join(get_random_words(random.randint(1, 3))).capitalize() if MINT_WITH_COMMENT else ''
+        comment = generate_comment()
         mint_args = eth_abi.encode(['address', 'bytes'], [self.address, bytes(comment, 'utf-8')]).hex()
         bs = '0x' + mint_args
 

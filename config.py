@@ -76,6 +76,7 @@ MODULES = {
 
 # Добавлять рандомный комментарий к минту
 MINT_WITH_COMMENT = True
+COMMENT_WORDS = ['nice', 'lfg', 'like', 'enjoy', '$enjoy', 'imagine', '$imagine', 'hi', 'gm', 'minted']
 # Минтить только custom NFT, пропуская все остальные из files/mints.txt
 MINT_ONLY_CUSTOM = False
 # Если у вас есть mint.fun Pass, то добавятся поинты за минты
