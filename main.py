@@ -83,7 +83,7 @@ def generate_comment():
         if rnd == 1:
             word = word.capitalize()
         elif rnd == 2:
-            if random.randint(1, 3):
+            if random.randint(1, 3) == 1:
                 word = word.upper()
         else:
             word = word.lower()
