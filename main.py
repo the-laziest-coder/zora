@@ -77,13 +77,14 @@ def generate_comment():
     if not MINT_WITH_COMMENT:
         return ''
     words = []
-    for w in random.sample(COMMENT_WORDS, random.randint(1, 3)):
+    for w in random.sample(COMMENT_WORDS, random.randint(1, 2)):
         word = w
         rnd = random.randint(1, 3)
         if rnd == 1:
             word = word.capitalize()
         elif rnd == 2:
-            word = word.upper()
+            if random.randint(1, 3):
+                word = word.upper()
         else:
             word = word.lower()
         words.append(word)
