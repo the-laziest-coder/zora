@@ -287,10 +287,9 @@ class Runner:
         headers = {
             'Accept': 'application/json, text/plain, */*',
             'Accept-Encoding': 'gzip, deflate, br, zstd',
-            'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
-            'Cache-Control': 'no-cache',
+            'Accept-Language': 'en-US,en;q=0.9',
             'Origin': 'https://bridge.zora.energy',
-            'Pragma': 'no-cache',
+            'Priority': 'u=1, i',
             'Referer': 'https://bridge.zora.energy/',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
@@ -328,7 +327,8 @@ class Runner:
         tx['from'] = Web3.to_checksum_address(tx['from'])
         tx['to'] = Web3.to_checksum_address(tx['to'])
 
-        del tx['gasLimit']
+        if 'gasLimit' in tx:
+            del tx['gasLimit']
 
         max_priority_fee = w3.eth.max_priority_fee
         latest_block = w3.eth.get_block("latest")
@@ -519,6 +519,7 @@ class Runner:
         tx['maxFeePerGas'] = max_fee_per_gas
 
         self.send_tx(w3, tx, 'Swap for $' + symbol)
+        wait_next_tx()
 
     def mint_fun_tx_change(self, tx):
         if self.with_mint_fun:
@@ -567,14 +568,13 @@ class Runner:
     def _mint_with_erc20(self, w3, nft_address, token_id, erc20_minter, erc20_token, erc20_price):
         self.wait_for_eth_gas_price(w3)
         self.swap(w3, erc20_token, erc20_price)
-        wait_next_tx()
         erc20 = w3.eth.contract(erc20_token, abi=ERC_20_ABI)
         symbol = erc20.functions.symbol().call()
         if erc20.functions.allowance(self.address, ERC20_MINTER).call() < erc20_price:
             self.build_and_send_tx(w3, erc20.functions.approve(ERC20_MINTER, erc20_price), f'Approve ${symbol}')
             wait_next_tx()
         comment = generate_comment()
-        args = (self.address, 1, nft_address, token_id, erc20_price, erc20_token, MINT_REF_ADDRESS, comment)
+        args = (self.address, 1, nft_address, token_id, erc20_price, erc20_token, ZERO_ADDRESS, comment)
         tx_hash = self.build_and_send_tx(w3, erc20_minter.functions.mint(*args), 'Mint with ERC20')
         return Status.SUCCESS, tx_hash
 
@@ -838,6 +838,8 @@ class Runner:
 
     @classmethod
     def generate_description(cls):
+        if EMPTY_DESCRIPTION:
+            return ''
         description_words = get_random_words(random.randint(3, 10))
         description_words[0] = description_words[0].capitalize()
         description = ' '.join(description_words)
