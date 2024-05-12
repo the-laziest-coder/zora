@@ -201,6 +201,8 @@ class Status(Enum):
     SUCCESS = 3
     SUCCESS_WITH_EXISTED_COLLECTION = 4
     FAILED = 5
+    MINT_NOT_STARTED = 6
+    MINT_ENDED = 7
 
 
 class Runner:
@@ -582,11 +584,11 @@ class Runner:
     def check_sale_config(cls, sale_config, minted_cnt):
         now = int(time.time())
         if now < sale_config[0]:
-            raise Exception(f'Mint has not started yet')
+            return Status.MINT_NOT_STARTED
         if now > sale_config[1]:
-            raise Exception(f'Mint has already ended')
+            return Status.MINT_ENDED
         if 0 < sale_config[2] <= minted_cnt:
-            return True
+            return Status.ALREADY
         return None
 
     def _mint_erc1155(self, w3, nft_address, token_id, simulate, with_rewards=True):
@@ -602,8 +604,8 @@ class Runner:
             erc20_token = sale_config[-1]
             erc20_price = sale_config[3]
             if erc20_token != ZERO_ADDRESS:
-                if self.check_sale_config(sale_config, balance):
-                    return Status.ALREADY, None
+                if (st := self.check_sale_config(sale_config, balance)) is not None:
+                    return st, None
                 return self._mint_with_erc20(w3, nft_address, token_id, erc20_minter, erc20_token, erc20_price)
 
         version = contract.functions.contractVersion().call()
@@ -618,8 +620,8 @@ class Runner:
             minter = w3.eth.contract(minter_address, abi=ZORA_MINTER_ABI)
             sale_config = minter.functions.sale(nft_address, token_id).call()
 
-        if self.check_sale_config(sale_config, balance):
-            return Status.ALREADY, None
+        if (st := self.check_sale_config(sale_config, balance)) is not None:
+            return st, None
 
         price = sale_config[3]
         value = contract.functions.mintFee().call() + price
@@ -816,13 +818,12 @@ class Runner:
         }
         boundary = '------WebKitFormBoundary' + ''.join(random.sample(string.ascii_letters + string.digits, 16))
         m = MultipartEncoder(fields=fields, boundary=boundary)
-        resp = requests.post('https://ipfs-uploader.zora.co/api/v0/add?'
-                             'stream-channels=true&cid-version=1&progress=false',
+        resp = requests.post('https://ipfs-uploader.zora.co/api/v0/add?cid-version=1',
                              data=m, headers={'content-type': m.content_type}, proxies=self.http_proxies, timeout=60)
         if resp.status_code != 200:
             raise Exception(f'status_code = {resp.status_code}, response = {resp.text}')
         try:
-            return resp.json()['Hash']
+            return resp.json()['cid']
         except Exception:
             raise Exception(f'status_code = {resp.status_code}, response = {resp.text}')
 
@@ -1609,6 +1610,12 @@ def main():
                         if status == Status.ALREADY:
                             logger.print(f'{module}: Already minted, trying another one', color='yellow')
                             continue
+                        elif status == Status.MINT_NOT_STARTED:
+                            logger.print(f'{module}: Mint has not started yet, trying another one', color='yellow')
+                            continue
+                        elif status == Status.MINT_ENDED:
+                            logger.print(f'{module}: Mint has already ended, trying another one', color='yellow')
+                            continue
 
                         mint_chain = nft[0]
                         stats[address][mint_chain] += 1
@@ -1617,7 +1624,8 @@ def main():
                         break
 
                     if not was_minted:
-                        logger.print(f'{module}: Every NFT from the list was already minted', color='yellow')
+                        logger.print(f'{module}: Every NFT from the list was already minted (or tried)',
+                                     color='yellow')
                         nothing_minted = True
 
                 if module != 'Mint' or not nothing_minted:
