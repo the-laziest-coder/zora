@@ -1,3 +1,4 @@
+import json
 import random
 import aiohttp
 import asyncio
@@ -37,11 +38,11 @@ class ZoraScan:
         self.account = Account().from_key(private_key)
         self.address = self.account.address
 
-    async def get_nft_data(self):
+    async def get_minted_data(self):
         async with aiohttp.ClientSession() as sess:
             async with sess.get(f'https://explorer.zora.energy/api/v2/addresses/{self.address}/tokens',
-                                proxy=self.proxy) as resp:
-                resp = await resp.json()
+                                proxy=self.proxy) as resp_raw:
+                resp = await resp_raw.json()
                 erc721, erc1155 = 0, 0
                 unique_erc721, unique_erc1155 = 0, 0
                 for item in resp['items']:
@@ -54,9 +55,25 @@ class ZoraScan:
                         unique_erc1155 += 1
                 return unique_erc721, unique_erc1155, erc721, erc1155
 
+    async def get_created_data(self):
+        async with aiohttp.ClientSession() as sess:
+            query = {
+                'chainId': '1,7777777,10,8453,42161,81457',
+                'direction': 'desc',
+                'limit': 1000,
+                'includeTokens': 'all',
+                'excludeBrokenContracts': 'false',
+            }
+            async with sess.get(f'https://zora.co/api/user/{self.address.lower()}/admin',
+                                params=query, proxy=self.proxy) as resp_raw:
+                resp = await resp_raw.json()
+                collections = len(resp)
+                nfts = sum(len(r['tokens']) if r['contractStandard'] == 'ERC1155' else 1 for r in resp)
+                return collections, nfts
+
     async def get_data(self):
         logger.info(f'{self.idx}) Processing {self.address}')
-        data = [None] * 8
+        data = [None] * 10
 
         try:
             req_args = {} if self.proxy is None or self.proxy == '' else {
@@ -72,11 +89,16 @@ class ZoraScan:
             logger.error(f'{self.idx}) Failed to get chain data: {str(e)}')
 
         try:
-            unique_erc721, unique_erc1155, erc721, erc1155 = await self.get_nft_data()
+            unique_erc721, unique_erc1155, erc721, erc1155 = await self.get_minted_data()
             data[2], data[3], data[4] = erc721 + erc1155, erc721, erc1155
             data[5], data[6], data[7] = unique_erc721 + unique_erc1155, unique_erc721, unique_erc1155
         except Exception as e:
             logger.error(f'{self.idx}) Failed to get nft data: {str(e)}')
+
+        try:
+            data[8], data[9] = await self.get_created_data()
+        except Exception as e:
+            logger.error(f'{self.idx}) Failed to get created data: {e}')
 
         wallets_data[self.address] = data
         logger.success(f'{self.idx}) Data filled')
@@ -122,7 +144,8 @@ def main():
 
     csv_data = [['Address', 'Balance', 'Tx Count',
                  'Total NFT', 'ERC-721', 'ERC-1155',
-                 'Unique Total NFT', 'Unique ERC-721', 'Unique ERC-1155']]
+                 'Unique Total NFT', 'Unique ERC-721', 'Unique ERC-1155',
+                 'Created Collections', 'Created NFTs']]
     for w in wallets:
         address = ZoraScan(None, w, None).address
         csv_data.append([address] + list(wallets_data[address]))
@@ -130,6 +153,9 @@ def main():
     with open(f'{results_path}/stats.csv', 'w') as file:
         writer = csv.writer(file)
         writer.writerows(csv_data)
+
+    print()
+    logger.success(f'Stats saves in {results_path}/stats.csv')
 
 
 if __name__ == '__main__':
