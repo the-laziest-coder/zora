@@ -40,7 +40,10 @@ with open('files/english_words.txt', 'r', encoding='utf-8') as words_file:
     english_words = words_file.read().splitlines()
 
 
-def parse_mint_link(link):
+NFT_PER_ADDRESS = 1000 if MINT_BY_NFTS else MAX_NFT_PER_ADDRESS
+
+
+def _parse_mint_link_without_cnt(link):
     link = link.strip()
     if link == '' or link[0] == '#':
         return None
@@ -69,6 +72,25 @@ def parse_mint_link(link):
     return chain, nft_address, token_id
 
 
+def parse_mint_link(link):
+    link = link.strip()
+    if link == '' or link[0] == '#':
+        return None
+    if '|' in link:
+        cnt = link.split('|')[1]
+        if '-' in cnt:
+            cnt = (int(cnt.split('-')[0]), int(cnt.split('-')[1]))
+        else:
+            cnt = (int(cnt), int(cnt))
+        link = link.split('|')[0]
+    else:
+        cnt = None
+    parsed = _parse_mint_link_without_cnt(link)
+    if parsed is None:
+        return None
+    return parsed if cnt is None else (parsed, cnt)
+
+
 def get_random_words(n: int):
     return [random.choice(english_words) for _ in range(n)]
 
@@ -76,8 +98,10 @@ def get_random_words(n: int):
 def generate_comment():
     if not MINT_WITH_COMMENT:
         return ''
+    if random.randint(1, 100) > COMMENT_PROBABILITY:
+        return ''
     words = []
-    for w in random.sample(COMMENT_WORDS, random.randint(1, 2)):
+    for w in random.sample(COMMENT_WORDS, random.randint(1, COMMENT_MAX_NUMBER_OF_WORDS)):
         word = w
         rnd = random.randint(1, 3)
         if rnd == 1:
@@ -385,13 +409,13 @@ class Runner:
 
         balance = w3.eth.get_balance(self.address)
         balance = int_to_decimal(balance, NATIVE_DECIMALS)
-        if balance - 0.0003 < BRIDGE_AMOUNT[0]:
+        if balance - 0.0001 < BRIDGE_AMOUNT[0] / 1.5:
             if try_okx and self.withdraw_from_okx():
                 wait_next_tx()
                 return self.instant_bridge(try_okx=False)
             else:
                 raise InsufficientFundsException(f'Low balance for bridge [{"%.5f" % balance}]', src_chain)
-        balance -= 0.0003
+        balance -= 0.0001
 
         amount = random.uniform(min(balance, BRIDGE_AMOUNT[0]), min(balance, BRIDGE_AMOUNT[1]))
         amount = round(amount, random.randint(4, 6))
@@ -460,6 +484,11 @@ class Runner:
         if token.functions.balanceOf(self.address).call() >= amount_out:
             logger.print(f'Enough ${symbol} balance')
             return
+
+        if SWAP_MULTIPLIER > 1:
+            multiplier = round(random.uniform(SWAP_MULTIPLIER * 0.9, SWAP_MULTIPLIER * 1.1), 2)
+            multiplier = max(multiplier, 1)
+            amount_out = int(amount_out * multiplier)
 
         logger.print(f'Swapping ETH for {"%.4f" % int_to_decimal(amount_out, decimals)} ${symbol}')
 
@@ -531,7 +560,7 @@ class Runner:
         contract = w3.eth.contract(nft_address, abi=ZORA_ERC721_ABI)
 
         balance = contract.functions.balanceOf(self.address).call()
-        if balance >= MAX_NFT_PER_ADDRESS:
+        if balance >= NFT_PER_ADDRESS:
             return Status.ALREADY, None
 
         price = contract.functions.salesConfig().call()[0]
@@ -540,7 +569,7 @@ class Runner:
 
         if with_rewards:
             comment = generate_comment()
-            args = (self.address, 1, comment, MINT_REF_ADDRESS if REF == '' else Web3.to_checksum_address(REF))
+            args = (self.address, 1, comment, Web3.to_checksum_address(MINT_REF_ADDRESS if REF == '' else REF))
             func = contract.functions.mintWithRewards
         else:
             args = (1,)
@@ -595,7 +624,7 @@ class Runner:
         contract = w3.eth.contract(nft_address, abi=ZORA_ERC1155_ABI)
 
         balance = contract.functions.balanceOf(self.address, token_id).call()
-        if balance >= MAX_NFT_PER_ADDRESS:
+        if balance >= NFT_PER_ADDRESS:
             return Status.ALREADY, None
 
         if get_chain(w3) == 'Zora' and not simulate and with_rewards:
@@ -632,7 +661,7 @@ class Runner:
 
         if with_rewards:
             args = (minter_address, token_id, 1, to_bytes(bs),
-                    MINT_REF_ADDRESS if REF == '' else Web3.to_checksum_address(REF))
+                    Web3.to_checksum_address(MINT_REF_ADDRESS if REF == '' else REF))
             func = contract.functions.mintWithRewards
         else:
             args = (minter_address, token_id, 1, to_bytes(bs))
@@ -669,7 +698,7 @@ class Runner:
         contract = w3.eth.contract(nft_address, abi=CUSTOM_ERC721_ABI)
 
         balance = contract.functions.balanceOf(self.address).call()
-        if balance >= (cnt * MAX_NFT_PER_ADDRESS):
+        if balance >= (cnt * NFT_PER_ADDRESS):
             return Status.ALREADY, None
 
         tx_hash = self.build_and_send_tx(
@@ -687,7 +716,7 @@ class Runner:
         contract = w3.eth.contract(ZERIUS_NFT_ADDRESS, abi=ZERIUS_NFT_ABI)
 
         balance = contract.functions.balanceOf(self.address).call()
-        if balance >= MAX_NFT_PER_ADDRESS:
+        if balance >= NFT_PER_ADDRESS:
             return Status.ALREADY, None
 
         price = contract.functions.mintFee().call()
@@ -1047,9 +1076,8 @@ class Runner:
 
     @runner_func('Get created collection')
     def get_created_zora_collections(self, is_erc_1155, timestamp_from=None):
-        resp_raw = requests.get(f'https://zora.co/api/user/{self.address}/admin'
-                                f'?query=adminCollections'
-                                f'&chainId=7777777'
+        resp_raw = requests.get(f'https://zora.co/api/user/{self.address.lower()}/admin'
+                                f'?chainId=1,7777777,10,8453,42161'
                                 f'&direction=desc'
                                 f'&limit=1000'
                                 f'&includeTokens=all'
@@ -1294,20 +1322,24 @@ class Runner:
         return self.zora_action_wrapper(self._claim)
 
 
-def wait_next_run(idx, runs_count):
+def wait_next_run(idx, runs_count, next_tx=False):
     wait = random.randint(
-        int(NEXT_ADDRESS_MIN_WAIT_TIME * 60),
-        int(NEXT_ADDRESS_MAX_WAIT_TIME * 60)
+        int(NEXT_TX_MIN_WAIT_TIME if next_tx else NEXT_ADDRESS_MIN_WAIT_TIME * 60),
+        int(NEXT_TX_MAX_WAIT_TIME if next_tx else NEXT_ADDRESS_MAX_WAIT_TIME * 60)
     )
 
     done_msg = f'Done: {idx}/{runs_count}'
+    run_type = 'Tx in the same account' if next_tx else 'Next account'
+    run_type = f'Next run type: {run_type}'
     waiting_msg = 'Waiting for next run for {:.2f} minutes'.format(wait / 60)
 
     cprint('\n#########################################\n#', 'cyan', end='')
     cprint(done_msg.center(39), 'magenta', end='')
+    cprint('#\n#########################################\n#', 'cyan', end='')
+    cprint(run_type.center(39), 'magenta', end='')
     cprint('#\n#########################################', 'cyan', end='')
 
-    tg_msg = done_msg
+    tg_msg = f'{done_msg}. {run_type}'
 
     cprint('\n# ', 'cyan', end='')
     cprint(waiting_msg, 'magenta', end='')
@@ -1326,9 +1358,8 @@ def get_all_created(address, proxy):
 
     proxies = {'http': proxy, 'https': proxy} if proxy and proxy != '' else {}
 
-    resp_raw = requests.get(f'https://zora.co/api/user/{address}/admin'
-                            f'?query=adminCollections'
-                            f'&chainId=7777777'
+    resp_raw = requests.get(f'https://zora.co/api/user/{address.lower()}/admin'
+                            f'?chainId=1,7777777,10,8453,42161'
                             f'&direction=desc'
                             f'&limit=1000'
                             f'&includeTokens=all'
@@ -1339,10 +1370,11 @@ def get_all_created(address, proxy):
         created_list = resp_raw.json()
         created_mints = []
         for created in created_list:
+            nft_chain = CHAIN_NAMES[created['chainId']]
             if created['contractStandard'] == 'ERC721':
-                created_mints.append(('Zora', created['address'], None))
+                created_mints.append((nft_chain, created['address'], None))
             else:
-                created_mints.extend([('Zora', created['address'], token_id + 1)
+                created_mints.extend([(nft_chain, created['address'], token_id + 1)
                                      for token_id in range(len(created['tokens']))])
         return created_mints
     except Exception as e:
@@ -1377,17 +1409,57 @@ def main():
             continue
         mints.append(parsed)
 
-    idx, runs_count = 0, len(queue)
+    if not EXTRACT_CREATED_NFTS:
+        if MINT_BY_NFTS:
+            if any(type(m[0]) is not tuple for m in mints):
+                cprint('In mint by nfts mode all mints in files/mints.txt have to be in '
+                       '`link|min_cnt-max_cnt` or `link|cnt` format', 'red')
+                return
+            if MINT_ALREADY_CREATED_PERCENT != 0:
+                cprint('In mint by nfts mode MINT_ALREADY_CREATED_PERCENT has to be 0', 'red')
+                return
+        else:
+            if any(type(m[0]) is tuple for m in mints):
+                cprint('In default mint mode all mints in files/mints.txt have to be without cnt info', 'red')
+                return
 
     created_mints, stats = {}, {}
+    minted_in_runs, auto_bridged_cnts, auto_created_cnts, all_actions_by_address = {}, {}, {}, {}
 
-    for wallet, proxy in tqdm(queue, desc='Initializing...'):
+    tqdm_desc = 'Extracting created nfts...' if EXTRACT_CREATED_NFTS else 'Initializing...'
+    for wallet, proxy in tqdm(queue, desc=tqdm_desc):
         if wallet.find(';') == -1:
             key = wallet
         else:
             key = wallet.split(';')[1]
 
         address = Account().from_key(key).address
+
+        if EXTRACT_CREATED_NFTS:
+            try:
+                for mint in get_all_created(address, proxy):
+                    with open(f'{results_path}/all_created_links.txt', 'a') as file:
+                        created_link = f'https://zora.co/collect/'
+                        created_link += ZORA_CHAINS_REVERSE_MAP[mint[0]] + ':'
+                        created_link += mint[1].lower()
+                        if mint[2] is not None:
+                            created_link += '/' + str(mint[2])
+                        file.write(f'{address}:{created_link}\n')
+            except Exception as e:
+                cprint(f'Failed to extract created nfts for {address}: {e}', 'red')
+                return
+            continue
+
+        minted_in_runs[address] = set()
+        auto_bridged_cnts[address] = 0
+        auto_created_cnts[address] = 0
+
+        modules = []
+        for action, (min_cnt, max_cnt) in MODULES.items():
+            if MINT_BY_NFTS and action.lower() == 'mint':
+                continue
+            modules.extend([action for _ in range(random.randint(min_cnt, max_cnt))])
+        all_actions_by_address[address] = [m.capitalize() for m in modules]
 
         created_mints[address] = []
         if MINT_ALREADY_CREATED_PERCENT > 0:
@@ -1400,25 +1472,57 @@ def main():
 
     print()
 
+    if EXTRACT_CREATED_NFTS:
+        cprint(f'All created nfts links saved in {results_path}/all_created_links.txt', 'green')
+        return
+
+    if MINT_BY_NFTS:
+        for mint, cnts in mints:
+            cnt = random.randint(cnts[0], cnts[1])
+            for wal_idx in list(random.sample([ii for ii in range(len(queue))], cnt)):
+                wal = queue[wal_idx][0]
+                if wal.find(';') == -1:
+                    key = wal
+                else:
+                    key = wal.split(';')[1]
+                address = Account().from_key(key).address
+                all_actions_by_address[address].append(('Mint', mint))
+
     random.shuffle(queue)
+
+    all_actions = []
+    for wallet, proxy in queue:
+        if wallet.find(';') == -1:
+            key = wallet
+        else:
+            key = wallet.split(';')[1]
+        address = Account().from_key(key).address
+        for act in all_actions_by_address[address]:
+            all_actions.append(((wallet, proxy), act))
+    if FULL_SHUFFLE:
+        random.shuffle(all_actions)
+
+    queue = all_actions
+    idx, runs_count = 0, len(queue)
+    prev_addr = ''
 
     while len(queue) != 0:
 
-        if idx != 0:
-            logger.send_tg_stored()
-            wait_next_run(idx, runs_count)
-
-        account = queue.pop(0)
-
+        account, module = queue.pop(0)
         wallet, proxy = account
-
         if wallet.find(';') == -1:
             key = wallet
         else:
             key = wallet.split(';')[1]
 
         address = Account().from_key(key).address
+
+        if idx != 0:
+            logger.send_tg_stored()
+            wait_next_run(idx, runs_count, next_tx=(address == prev_addr))
+
         logger.print(address)
+        prev_addr = address
 
         try:
             runner = Runner(key, proxy)
@@ -1427,48 +1531,75 @@ def main():
             logger.print(f'Failed to init: {str(e)}', color='red')
             continue
 
-        modules = []
-        for action, (min_cnt, max_cnt) in MODULES.items():
-            modules.extend([action for _ in range(random.randint(min_cnt, max_cnt))])
-        modules = [m.capitalize() for m in modules]
+        if type(module) is tuple:
+            fixed_mint = module[1]
+            module = module[0]
+        else:
+            fixed_mint = None
 
-        random.shuffle(modules)
+        logger.print(f'{module}: Started', color='blue')
+        try:
+            nothing_minted = False
+            if module == 'Claim':
 
-        minted_in_run = set()
-        auto_bridged_cnt = 0
-        auto_created_cnt = 0
+                runner.claim()
 
-        for module in modules:
-            logger.print(f'{module}: Started', color='blue')
-            try:
-                nothing_minted = False
-                if module == 'Claim':
+            elif module == 'Bridge':
 
-                    runner.claim()
+                if auto_bridged_cnts[address] > 0:
+                    auto_bridged_cnts[address] -= 1
+                    logger.print(f'{module}: Skipped, because it was done automatically before', color='yellow')
+                    continue
 
-                elif module == 'Bridge':
+                runner.bridge()
 
-                    if auto_bridged_cnt > 0:
-                        auto_bridged_cnt -= 1
-                        logger.print(f'{module}: Skipped, because it was done automatically before', color='yellow')
-                        continue
+            elif module == 'Create':
 
-                    runner.bridge()
+                if auto_created_cnts[address] > 0:
+                    auto_created_cnts[address] -= 1
+                    logger.print(f'{module}: Skipped, because it was done automatically before', color='yellow')
+                    continue
 
-                elif module == 'Create':
+                wait_next_tx(2.0)
+                timestamp = int(time.time())
 
-                    if auto_created_cnt > 0:
-                        auto_created_cnt -= 1
-                        logger.print(f'{module}: Skipped, because it was done automatically before', color='yellow')
-                        continue
+                create_status, bridged = runner.create(USE_NFT_1155)
+                if bridged:
+                    auto_bridged_cnts[address] += 1
+
+                stats[address]['Created'] += 1
+
+                if type(create_status) is tuple:
+                    wait_next_tx()
+                    created_nft = runner.save_created_1155_nft(create_status[1])
+                    created_mints[address].append(created_nft)
+                else:
+                    created_nft = runner.wait_recently_created_collection(USE_NFT_1155, timestamp)
+                    if created_nft is None:
+                        logger.print(f'{module}: Can\'t get created collection link for 60 seconds', color='red')
+                    else:
+                        created_mints[address].append(created_nft)
+
+            elif module == 'Update':
+
+                is_erc_1155 = random.randint(1, 2) == 1
+
+                collection_addresses = runner.get_created_zora_collections(is_erc_1155)
+                if len(collection_addresses) == 0:
+                    collection_addresses = runner.get_created_zora_collections(not is_erc_1155)
+
+                if len(collection_addresses) == 0 and AUTO_CREATE:
+
+                    logger.print(f'{module}: No collections found. Let\'s create one')
 
                     wait_next_tx(2.0)
                     timestamp = int(time.time())
 
                     create_status, bridged = runner.create(USE_NFT_1155)
                     if bridged:
-                        auto_bridged_cnt += 1
+                        auto_bridged_cnts[address] += 1
 
+                    auto_created_cnts[address] += 1
                     stats[address]['Created'] += 1
 
                     if type(create_status) is tuple:
@@ -1478,164 +1609,134 @@ def main():
                     else:
                         created_nft = runner.wait_recently_created_collection(USE_NFT_1155, timestamp)
                         if created_nft is None:
-                            logger.print(f'{module}: Can\'t get created collection link for 60 seconds', color='red')
+                            logger.print(f'{module}: Can\'t get created collection link for 60 seconds',
+                                         color='red')
+                            continue
                         else:
                             created_mints[address].append(created_nft)
 
-                elif module == 'Update':
+                    wait_next_tx()
 
-                    is_erc_1155 = random.randint(1, 2) == 1
+                    collection_addresses = runner.get_created_zora_collections(USE_NFT_1155)
+                    is_erc_1155 = USE_NFT_1155
 
-                    collection_addresses = runner.get_created_zora_collections(is_erc_1155)
-                    if len(collection_addresses) == 0:
-                        collection_addresses = runner.get_created_zora_collections(not is_erc_1155)
+                _, bridged = runner.update(random.choice(collection_addresses), is_erc_1155)
+                if bridged:
+                    auto_bridged_cnts[address] += 1
+                stats[address]['Updated'] += 1
 
-                    if len(collection_addresses) == 0 and AUTO_CREATE:
+            elif module == 'Admin':
 
-                        logger.print(f'{module}: No collections found. Let\'s create one')
+                is_erc_1155 = random.randint(1, 2) == 1
 
-                        wait_next_tx(2.0)
-                        timestamp = int(time.time())
+                collection_addresses = runner.get_created_zora_collections(is_erc_1155)
+                if len(collection_addresses) == 0:
+                    collection_addresses = runner.get_created_zora_collections(not is_erc_1155)
 
-                        create_status, bridged = runner.create(USE_NFT_1155)
-                        if bridged:
-                            auto_bridged_cnt += 1
+                if len(collection_addresses) == 0 and AUTO_CREATE:
 
-                        auto_created_cnt += 1
-                        stats[address]['Created'] += 1
+                    logger.print(f'{module}: No collections found. Let\'s create one')
 
-                        if type(create_status) is tuple:
-                            wait_next_tx()
-                            created_nft = runner.save_created_1155_nft(create_status[1])
-                            created_mints[address].append(created_nft)
-                        else:
-                            created_nft = runner.wait_recently_created_collection(USE_NFT_1155, timestamp)
-                            if created_nft is None:
-                                logger.print(f'{module}: Can\'t get created collection link for 60 seconds',
-                                             color='red')
-                                continue
-                            else:
-                                created_mints[address].append(created_nft)
+                    wait_next_tx(2.0)
+                    timestamp = int(time.time())
 
-                        wait_next_tx()
-
-                        collection_addresses = runner.get_created_zora_collections(USE_NFT_1155)
-                        is_erc_1155 = USE_NFT_1155
-
-                    _, bridged = runner.update(random.choice(collection_addresses), is_erc_1155)
+                    create_status, bridged = runner.create(USE_NFT_1155)
                     if bridged:
-                        auto_bridged_cnt += 1
-                    stats[address]['Updated'] += 1
+                        auto_bridged_cnts[address] += 1
 
-                elif module == 'Admin':
+                    auto_created_cnts[address] += 1
+                    stats[address]['Created'] += 1
 
-                    is_erc_1155 = random.randint(1, 2) == 1
-
-                    collection_addresses = runner.get_created_zora_collections(is_erc_1155)
-                    if len(collection_addresses) == 0:
-                        collection_addresses = runner.get_created_zora_collections(not is_erc_1155)
-
-                    if len(collection_addresses) == 0 and AUTO_CREATE:
-
-                        logger.print(f'{module}: No collections found. Let\'s create one')
-
-                        wait_next_tx(2.0)
-                        timestamp = int(time.time())
-
-                        create_status, bridged = runner.create(USE_NFT_1155)
-                        if bridged:
-                            auto_bridged_cnt += 1
-
-                        auto_created_cnt += 1
-                        stats[address]['Created'] += 1
-
-                        if type(create_status) is tuple:
-                            wait_next_tx()
-                            created_nft = runner.save_created_1155_nft(create_status[1])
-                            created_mints[address].append(created_nft)
-                        else:
-                            created_nft = runner.wait_recently_created_collection(USE_NFT_1155, timestamp)
-                            if created_nft is None:
-                                logger.print(f'{module}: Can\'t get created collection link for 60 seconds',
-                                             color='red')
-                                continue
-                            else:
-                                created_mints[address].append(created_nft)
-
+                    if type(create_status) is tuple:
                         wait_next_tx()
+                        created_nft = runner.save_created_1155_nft(create_status[1])
+                        created_mints[address].append(created_nft)
+                    else:
+                        created_nft = runner.wait_recently_created_collection(USE_NFT_1155, timestamp)
+                        if created_nft is None:
+                            logger.print(f'{module}: Can\'t get created collection link for 60 seconds',
+                                         color='red')
+                            continue
+                        else:
+                            created_mints[address].append(created_nft)
 
-                        collection_addresses = runner.get_created_zora_collections(USE_NFT_1155)
-                        is_erc_1155 = USE_NFT_1155
+                    wait_next_tx()
 
-                    _, bridged = runner.admin_mint(random.choice(collection_addresses), is_erc_1155)
-                    if bridged:
-                        auto_bridged_cnt += 1
-                    stats[address]['Admin Mint'] += 1
+                    collection_addresses = runner.get_created_zora_collections(USE_NFT_1155)
+                    is_erc_1155 = USE_NFT_1155
 
-                else:
+                _, bridged = runner.admin_mint(random.choice(collection_addresses), is_erc_1155)
+                if bridged:
+                    auto_bridged_cnts[address] += 1
+                stats[address]['Admin Mint'] += 1
 
-                    possible_mints = copy.deepcopy(mints)
-                    random.shuffle(possible_mints)
-                    was_minted = False
+            else:
 
-                    while len(possible_mints) != 0:
+                possible_mints = copy.deepcopy(mints)
+                random.shuffle(possible_mints)
+                was_minted = False
 
-                        nft = None
-                        if random.randint(1, 100) <= MINT_ALREADY_CREATED_PERCENT:
-                            created_addresses = list(created_mints.keys())
-                            random.shuffle(created_addresses)
-                            for created_address in created_addresses:
-                                if created_address == address or len(created_mints[created_address]) == 0:
+                while len(possible_mints) != 0:
+
+                    nft = None
+                    if random.randint(1, 100) <= MINT_ALREADY_CREATED_PERCENT:
+                        created_addresses = list(created_mints.keys())
+                        random.shuffle(created_addresses)
+                        for created_address in created_addresses:
+                            if created_address == address or len(created_mints[created_address]) == 0:
+                                continue
+                            nfts = copy.deepcopy(created_mints[created_address])
+                            random.shuffle(nfts)
+                            for _nft in nfts:
+                                if _nft in minted_in_runs[address]:
                                     continue
-                                nfts = copy.deepcopy(created_mints[created_address])
-                                random.shuffle(nfts)
-                                for _nft in nfts:
-                                    if _nft in minted_in_run:
-                                        continue
-                                    nft = _nft
-                                    break
-                                if nft is not None:
-                                    break
+                                nft = _nft
+                                break
+                            if nft is not None:
+                                break
 
-                        if nft is None:
-                            nft = possible_mints.pop(0)
-                            if nft in minted_in_run:
-                                continue
+                    if fixed_mint is not None:
+                        nft = fixed_mint
 
-                        minted_in_run.add(nft)
-
-                        status, bridged = runner.mint(nft)
-                        if bridged:
-                            auto_bridged_cnt += 1
-                        if status == Status.ALREADY:
-                            logger.print(f'{module}: Already minted, trying another one', color='yellow')
-                            continue
-                        elif status == Status.MINT_NOT_STARTED:
-                            logger.print(f'{module}: Mint has not started yet, trying another one', color='yellow')
-                            continue
-                        elif status == Status.MINT_ENDED:
-                            logger.print(f'{module}: Mint has already ended, trying another one', color='yellow')
+                    if nft is None:
+                        nft = possible_mints.pop(0)
+                        if nft in minted_in_runs[address]:
                             continue
 
-                        mint_chain = nft[0]
-                        stats[address][mint_chain] += 1
-                        was_minted = True
+                    minted_in_runs[address].add(nft)
 
-                        break
+                    status, bridged = runner.mint(nft)
+                    if bridged:
+                        auto_bridged_cnts[address] += 1
+                    if status == Status.ALREADY:
+                        logger.print(f'{module}: Already minted, trying another one', color='yellow')
+                        continue
+                    elif status == Status.MINT_NOT_STARTED:
+                        logger.print(f'{module}: Mint has not started yet, trying another one', color='yellow')
+                        continue
+                    elif status == Status.MINT_ENDED:
+                        logger.print(f'{module}: Mint has already ended, trying another one', color='yellow')
+                        continue
 
-                    if not was_minted:
-                        logger.print(f'{module}: Every NFT from the list was already minted (or tried)',
-                                     color='yellow')
-                        nothing_minted = True
+                    mint_chain = nft[0]
+                    stats[address][mint_chain] += 1
+                    was_minted = True
 
-                if module != 'Mint' or not nothing_minted:
-                    logger.print(f'{module}: Success', color='green')
+                    break
 
-                wait_next_tx()
+                if not was_minted:
+                    logger.print(f'{module}: Every NFT from the list was already minted (or tried)',
+                                 color='yellow')
+                    nothing_minted = True
 
-            except Exception as e:
-                handle_traceback()
-                logger.print(f'{module}: Failed: {str(e)}', color='red')
+            if module != 'Mint' or not nothing_minted:
+                logger.print(f'{module}: Success', color='green')
+
+            wait_next_tx()
+
+        except Exception as e:
+            handle_traceback()
+            logger.print(f'{module}: Failed: {str(e)}', color='red')
 
         with open(f'{results_path}/report.csv', 'w', encoding='utf-8', newline='') as file:
             writer = csv.writer(file)

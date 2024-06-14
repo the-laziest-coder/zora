@@ -1,7 +1,7 @@
 import json
 
 
-INVOLVED_CHAINS = ['Zora', 'Base', 'Optimism', 'Ethereum', 'Arbitrum']
+INVOLVED_CHAINS = ['Zora', 'Base', 'Optimism', 'Ethereum', 'Arbitrum', 'Blast']
 
 SCANS = {
     'Ethereum': 'https://etherscan.io',
@@ -16,6 +16,7 @@ SCANS = {
     'zkEVM': 'https://zkevm.polygonscan.com',
     'Zora': 'https://explorer.zora.energy',
     'Base': 'https://basescan.org',
+    'Blast': 'https://blastscan.io',
 }
 
 CHAIN_IDS = {
@@ -31,6 +32,7 @@ CHAIN_IDS = {
     'zkEVM': 1101,
     'Zora': 7777777,
     'Base': 8453,
+    'Blast': 81457,
 }
 
 CHAIN_NAMES = {
@@ -47,9 +49,10 @@ CHAIN_NAMES = {
     1101: 'zkEVM',
     7777777: 'Zora',
     8453: 'Base',
+    81457: 'Blast',
 }
 
-EIP1559_CHAINS = ['Ethereum', 'Zora', 'Optimism', 'Base', 'Arbitrum']
+EIP1559_CHAINS = ['Ethereum', 'Zora', 'Optimism', 'Base', 'Arbitrum', 'Blast']
 
 NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
 
@@ -85,7 +88,7 @@ MINTER_ADDRESSES = {
 
 ZORA_MINTER_ABI = json.load(open('abi/zora_minter.json'))
 
-MINT_REF_ADDRESS = '0xc474A9A00E56c3bF947C71EDd1515dAD5706d3D5'
+MINT_REF_ADDRESS = hex(1121563853965062973585180572913477719124829721557)
 
 ZORA_NFT_CREATOR_ADDRESS = '0xA2c2A96A232113Dd4993E8b048EEbc3371AE8d85'
 ZORA_NFT_CREATOR_ABI = json.load(open('abi/zora_nft_creator.json'))
@@ -102,6 +105,13 @@ ZORA_CHAINS_MAP = {
     'zora': 'Zora',
     'base': 'Base',
     'arb': 'Arbitrum',
+}
+ZORA_CHAINS_REVERSE_MAP = {
+    'Ethereum': 'eth',
+    'Optimism': 'oeth',
+    'Zora': 'zora',
+    'Base': 'base',
+    'Arbitrum': 'arb',
 }
 
 MINT_FUN_DATA_SUFFIX = '0021fb3f'
