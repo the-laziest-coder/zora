@@ -131,7 +131,7 @@ class Zora:
 
     def get_existed_email(self):
         self.ensure_authorized()
-        url = 'https://zora.co/api/trpc/account.getAccount?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%7D%7D%7D'
+        url = 'https://zora.co/api/trpc/account.getAccount?input=%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%7D%7D'
         resp = self.sess.get(url, cookies=self.cookies)
         if resp.status_code == 404:
             return '', False, True
@@ -250,28 +250,26 @@ class Zora:
         logger.info(f'{self.idx}) Init new Zora account')
 
         name = email_info.split(':')[0].split('@')[0]
-        url = 'https://zora.co/api/trpc/account.createAccount?batch=1'
+        url = 'https://zora.co/api/trpc/account.createAccount'
         body = {
-            0: {
-                'json': {
-                    'marketingOptIn': True,
-                    'profile': {
-                        'avatarUri': None,
-                        'description': None,
-                        'displayName': name.capitalize(),
-                    },
-                    'referrer': None,
-                    'username': name,
-                    'walletAddress': self.address,
+            'json': {
+                'marketingOptIn': True,
+                'profile': {
+                    'avatarUri': None,
+                    'description': None,
+                    'displayName': name.capitalize(),
                 },
-                'meta': {
-                    'values': {
-                        'profile.avatarUri': ['undefined'],
-                        'profile.description': ['undefined'],
-                        'referrer': ['undefined'],
-                    }
-                },
-            }
+                'referrer': None,
+                'username': name,
+                'walletAddress': self.address,
+            },
+            'meta': {
+                'values': {
+                    'profile.avatarUri': ['undefined'],
+                    'profile.description': ['undefined'],
+                    'referrer': ['undefined'],
+                }
+            },
         }
         resp = self.sess.post(url, json=body, headers={
             'referrer': 'https://zora.co/onboarding',
