@@ -1,4 +1,5 @@
 import io
+import json
 import string
 import copy
 import csv
@@ -38,7 +39,6 @@ logger = Logger(to_console=True, to_file=True, default_file=f'{logs_path}/consol
 
 with open('files/english_words.txt', 'r', encoding='utf-8') as words_file:
     english_words = words_file.read().splitlines()
-
 
 NFT_PER_ADDRESS = 1000 if MINT_BY_NFTS else MAX_NFT_PER_ADDRESS
 
@@ -498,26 +498,28 @@ class Runner:
             'configs': [{
                 'enableFeeOnTransferFeeFetching': True,
                 'enableUniversalRouter': True,
-                'protocols': ['V3'],
+                'protocols': ['V2', 'V3', 'MIXED'],
                 'recipient': self.address,
                 'routingType': 'CLASSIC',
             }],
             'intent': 'quote',
             'sendPortionEnabled': False,
+            'swapper': self.address,
             'tokenIn': 'ETH',
             'tokenInChainId': w3.current_chain_id,
             'tokenOut': token_to,
             'tokenOutChainId': w3.current_chain_id,
             'type': 'EXACT_OUTPUT',
+            'useUniswapX': True,
         }
         headers = {
-            'Accept': 'application/json, text/plain, */*',
+            'Accept': '*/*',
             'Accept-Encoding': 'gzip, deflate, br, zstd',
-            'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
-            'Cache-Control': 'no-cache',
-            'Origin': 'https://swap.zora.energy',
-            'Pragma': 'no-cache',
-            'Referer': 'https://swap.zora.energy/',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Content-Type': 'text/plain;charset=UTF-8',
+            'Origin': 'https://app.uniswap.org',
+            'Priority': 'u=1, i',
+            'Referer': 'https://app.uniswap.org/',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-site',
@@ -525,9 +527,9 @@ class Runner:
             'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
             'Sec-Ch-Ua-Mobile': '?0',
             'Sec-Ch-Ua-Platform': '"macOS"',
-            'X-Rkc-Version': '1.11.2',
+            'X-Request-Source': 'uniswap-web',
         }
-        resp = requests.post('https://api.swap.zora.energy/quote',
+        resp = requests.post('https://interface.gateway.uniswap.org/v2/quote',
                              json=body, headers=headers, proxies=self.http_proxies)
 
         try:
@@ -878,8 +880,10 @@ class Runner:
     def get_image_uri(self, name):
         return 'ipfs://' + self.upload_image_ipfs(name)
 
-    def get_json_uri(self, body):
-        return 'ipfs://' + self.upload_ipfs('', bytes(body, 'utf-8'), '')
+    def get_json_uri(self, body, filename=None):
+        if filename is None:
+            filename = 'metadata'
+        return 'ipfs://' + self.upload_ipfs(filename, bytes(body, 'utf-8'), 'application/octet-stream')
 
     @runner_func('Create ERC-721 Edition')
     def _create(self):
@@ -1321,6 +1325,69 @@ class Runner:
     def claim(self):
         return self.zora_action_wrapper(self._claim)
 
+    @classmethod
+    def _get_random_color(cls):
+        return hex(random.randint(0, 2 ** 24 - 1))[2:].upper().zfill(6)
+
+    def read_ipfs(self, ipfs_url: str):
+        try:
+            url = 'https://magic.decentralized-content.com' + ipfs_url.replace('://', '/')
+            resp = requests.get(url, proxies=self.http_proxies, timeout=60)
+            if resp.status_code != 200:
+                raise Exception(f'Bad status code = {resp.status_code}')
+            return resp.json()
+        except Exception as e:
+            raise Exception(f'Read ipfs file failed: {e}')
+
+    @classmethod
+    def _get_formatted_social_link(cls, links, link_name):
+        return json.dumps(links.get(link_name))
+
+    def _personalize(self):
+        color0 = self._get_random_color()
+        color1 = self._get_random_color()
+        heading_font = random.choice(PERSONALIZE_FONTS)
+        body_font = random.choice(PERSONALIZE_FONTS)
+        heading_font_size, body_font_size, caption_font_size = random.choice(PERSONALIZE_FONT_SIZES)
+        button_shape = random.choice(PERSONALIZE_BUTTON_SHAPES)
+        unit_radius = random.choice(PERSONALIZE_BORDER_RADIUSES)
+        heading_text_transform = random.choice(PERSONALIZE_TEXT_TRANSFORMS)
+        body_text_transform = random.choice(PERSONALIZE_TEXT_TRANSFORMS)
+
+        w3 = self.w3('Zora')
+        contract = w3.eth.contract(JSON_EXTENSION_REGISTRY, abi=JSON_EXTENSION_REGISTRY_ABI)
+        current_personalization_params_uri = contract.functions.getJSONExtension(self.address).call()
+        current_personalization_params = {} if current_personalization_params_uri == '' \
+            else self.read_ipfs(current_personalization_params_uri)
+        current_links = current_personalization_params.get('links', {})
+
+        twitter = self._get_formatted_social_link(current_links, 'twitter')
+        instagram = self._get_formatted_social_link(current_links, 'instagram')
+        farcaster = self._get_formatted_social_link(current_links, 'farcaster')
+        tiktok = self._get_formatted_social_link(current_links, 'tiktok')
+        discord = self._get_formatted_social_link(current_links, 'discord')
+        website = self._get_formatted_social_link(current_links, 'website')
+
+        personalization_params = PROFILE_PERSONALIZATION_FORMAT.format(
+            color0, color1,
+            heading_font, heading_font_size,
+            body_font, body_font_size, caption_font_size,
+            button_shape, unit_radius,
+            twitter, instagram, farcaster, tiktok, discord, website,
+            heading_text_transform, body_text_transform,
+        )
+        personalization_params_uri = self.get_json_uri(personalization_params, filename='extension.json')
+
+        self.wait_for_eth_gas_price(w3)
+        self.build_and_send_tx(
+            w3,
+            contract.functions.setJSONExtension(self.address, personalization_params_uri),
+            action='Personalize profile',
+        )
+
+    def personalize(self):
+        return self.zora_action_wrapper(self._personalize)
+
 
 def wait_next_run(idx, runs_count, next_tx=False):
     wait = random.randint(
@@ -1552,6 +1619,10 @@ def main():
                     continue
 
                 runner.bridge()
+
+            elif module == 'Personalize':
+
+                runner.personalize()
 
             elif module == 'Create':
 

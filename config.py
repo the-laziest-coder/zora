@@ -63,6 +63,7 @@ OKX_WITHDRAW_ETH_AMOUNT = (0.007, 0.01)
 # 'update' - обновить параметры рандомной созданной ERC721 коллекции
 # 'bridge' - бридж из эфира в зору
 # 'claim' - клейм ревардов в Base и Zora. В Zora 2 клейма отдельных
+# 'personalize' - рандомное персонализирование профиля
 # Формат - <действие>: (<минимальное кол-во>, <максимальное кол-во>)
 # Для каждого акка и действия выбирается рандомное кол-во транзакций в указанном диапазоне
 MODULES = {
@@ -72,6 +73,7 @@ MODULES = {
     'update': (0, 0),
     'bridge': (0, 0),
     'claim': (0, 0),
+    'personalize': (0, 0),
 }
 
 # Достать все созданные нфт (ссылки на них) на всех кошельках
@@ -99,7 +101,7 @@ MINT_WITH_COMMENT = True
 COMMENT_PROBABILITY = 20
 # Максимальное кол-во слов в комменте, Выбирается рандомное
 COMMENT_MAX_NUMBER_OF_WORDS = 1
-COMMENT_WORDS = ['nice', 'lfg', 'enjoy', '$enjoy', 'imagine', '$imagine', 'gm', 'minted', '!!!', '???']
+COMMENT_WORDS = ['nice', 'lfg', 'enjoy', '$enjoy', 'imagine', '$imagine', 'gm', 'minted', '!!!', '???', 'based', 'like']
 # Минтить только custom NFT, пропуская все остальные из files/mints.txt
 MINT_ONLY_CUSTOM = False
 # Если у вас есть mint.fun Pass, то добавятся поинты за минты

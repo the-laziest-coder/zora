@@ -1,7 +1,7 @@
 import json
 
 
-INVOLVED_CHAINS = ['Zora', 'Base', 'Optimism', 'Ethereum', 'Arbitrum', 'Blast']
+INVOLVED_CHAINS = ['Zora', 'Base', 'Optimism', 'Ethereum', 'Arbitrum']
 
 SCANS = {
     'Ethereum': 'https://etherscan.io',
@@ -152,3 +152,99 @@ ERC_20_ABI = json.load(open('abi/erc20_token.json'))
 
 ERC20_MINTER = '0x777777E8850d8D6d98De2B5f64fae401F96eFF31'
 ERC20_MINTER_ABI = json.load(open('abi/erc20_minter.json'))
+
+JSON_EXTENSION_REGISTRY = '0xABCDEFEd93200601e1dFe26D6644758801D732E8'
+JSON_EXTENSION_REGISTRY_ABI = json.load(open('abi/json_extension_registry.json'))
+
+PROFILE_PERSONALIZATION_FORMAT = '''{{
+  "theme": {{
+    "color": {{
+      "background": "#{0}",
+      "text": "#{1}",
+      "accent": "#{1}",
+      "accentText": "#{0}",
+      "border": "#{1}"
+    }},
+    "font": {{
+      "heading": {{
+        "fontFamily": "{2}",
+        "fontSize": "{3}px",
+        "lineHeight": "1.1"
+      }},
+      "body": {{
+        "fontFamily": "{4}",
+        "fontSize": "{5}px",
+        "lineHeight": "1.3"
+      }},
+      "caption": {{
+        "fontFamily": "{4}",
+        "fontSize": "{6}px",
+        "lineHeight": "1.3"
+      }}
+    }},
+    "button": {{
+      "shape": "{7}"
+    }},
+    "unit": {{
+      "radius": "{8}px",
+      "base": "6px"
+    }}
+  }},
+  "links": {{
+    "twitter": {9},
+    "instagram": {10},
+    "farcaster": {11},
+    "tiktok": {12},
+    "discord": {13},
+    "website": {14}
+  }},
+  "options": {{
+    "showMetadataHistories": false,
+    "useBorders": null,
+    "textTransform": {{
+      "heading": "{15}",
+      "body": "{16}",
+      "caption": "{16}"
+    }},
+    "backgroundImage": {{
+      "image": null,
+      "title": null,
+      "blur": 0,
+      "opacity": 1,
+      "size": 300,
+      "repeat": false,
+      "style": "fill"
+    }},
+    "dropShadow": {{
+      "spreadRadius": 0,
+      "blurRadius": 0,
+      "color": "#000000",
+      "opacity": 0
+    }},
+    "textStyling": {{
+      "styleType": "none",
+      "horizontalLength": 0,
+      "verticalLength": 0,
+      "blurRadius": 0,
+      "color": "#000000",
+      "opacity": 0
+    }}
+  }},
+  "profile": {{
+    "displayOptions": {{
+      "initialView": null
+    }}
+  }},
+  "template": "Default"
+}}'''
+
+
+PERSONALIZE_FONTS = ['Aboreto', 'Archivo', 'Arimo', 'Freckle Face', 'Gaegu',
+                     'IBM Plex Mono', 'Inconsolata', 'Inter', 'Karla',
+                     'Libre Baskerville', 'Londrina Solid', 'Michroma',
+                     'Nunito', 'Poppins', 'Press Start 2P', 'Rubik',
+                     'Silkscreen', 'Source Sans Pro', 'Space Mono', 'Zen Dots']
+PERSONALIZE_FONT_SIZES = [(32, 15, 12), (48, 18, 14), (48, 14, 12), (59, 17, 12)]
+PERSONALIZE_BUTTON_SHAPES = ['inherit', 'pill', 'square']
+PERSONALIZE_BORDER_RADIUSES = [4, 16, 12, 10, 0]
+PERSONALIZE_TEXT_TRANSFORMS = ['none', 'uppercase', 'lowercase']
