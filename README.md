@@ -13,6 +13,7 @@
  - Link email and create Zora account
  - Claim rewards
  - Check wallets stats
+ - Personalize profiles
 
 ### Follow: https://t.me/thelaziestcoder
 
