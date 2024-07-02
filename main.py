@@ -640,7 +640,7 @@ class Runner:
                 return self._mint_with_erc20(w3, nft_address, token_id, erc20_minter, erc20_token, erc20_price)
 
         version = contract.functions.contractVersion().call()
-        if version == '2.7.0' and get_chain(w3) == 'Base':
+        if (version == '2.7.0' or version == '2.9.0' or version == '2.10.1') and get_chain(w3) == 'Base':
             minter_address = MINTER_ADDRESSES['2.7.0']['Base']
         else:
             minter_address = MINTER_ADDRESSES['2.0.0'][get_chain(w3)]
@@ -1388,6 +1388,12 @@ class Runner:
     def personalize(self):
         return self.zora_action_wrapper(self._personalize)
 
+    def _do_swap(self, to_eth):
+        pass
+
+    def do_swap(self, to_eth):
+        return self.zora_action_wrapper(self._do_swap, to_eth)
+
 
 def wait_next_run(idx, runs_count, next_tx=False):
     wait = random.randint(
@@ -1564,8 +1570,16 @@ def main():
         else:
             key = wallet.split(';')[1]
         address = Account().from_key(key).address
+        by_address = []
         for act in all_actions_by_address[address]:
-            all_actions.append(((wallet, proxy), act))
+            by_address.append(((wallet, proxy), act))
+        random.shuffle(by_address)
+        swap_doubled = []
+        for acc, act in by_address:
+            swap_doubled.append((acc, act))
+            if type(act) is not tuple and act == 'Swap':
+                swap_doubled.append((acc, act))
+        all_actions.extend(swap_doubled)
     if FULL_SHUFFLE:
         random.shuffle(all_actions)
 
