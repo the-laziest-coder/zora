@@ -1425,7 +1425,7 @@ def wait_next_run(idx, runs_count, next_tx=False):
 
 
 @runner_func('Get all created collections')
-def get_all_created(address, proxy):
+def get_all_created(address, proxy, with_is_erc20_info=False):
     if proxy is not None and len(proxy) > 4 and proxy[:4] != 'http':
         proxy = 'http://' + proxy
 
@@ -1445,10 +1445,13 @@ def get_all_created(address, proxy):
         for created in created_list:
             nft_chain = CHAIN_NAMES[created['chainId']]
             if created['contractStandard'] == 'ERC721':
-                created_mints.append((nft_chain, created['address'], None))
+                created_mints.append(((nft_chain, created['address'], None), False) if with_is_erc20_info
+                                     else (nft_chain, created['address'], None))
             else:
-                created_mints.extend([(nft_chain, created['address'], token_id + 1)
-                                     for token_id in range(len(created['tokens']))])
+                created_mints.extend([((nft_chain, created['address'], token_id),
+                                       'erc20Minter' in token['salesStrategy']) if with_is_erc20_info
+                                      else (nft_chain, created['address'], token_id)
+                                      for token_id, token in enumerate(created['tokens'], start=1)])
         return created_mints
     except Exception as e:
         raise Exception(f'status_code = {resp_raw.status_code}, response = {resp_raw.text}: {str(e)}')
@@ -1510,14 +1513,14 @@ def main():
 
         if EXTRACT_CREATED_NFTS:
             try:
-                for mint in get_all_created(address, proxy):
+                for mint, is_erc20 in get_all_created(address, proxy, with_is_erc20_info=True):
                     with open(f'{results_path}/all_created_links.txt', 'a') as file:
                         created_link = f'https://zora.co/collect/'
                         created_link += ZORA_CHAINS_REVERSE_MAP[mint[0]] + ':'
                         created_link += mint[1].lower()
                         if mint[2] is not None:
                             created_link += '/' + str(mint[2])
-                        file.write(f'{address}:{created_link}\n')
+                        file.write(f'{address};{created_link};{"CUSTOM" if is_erc20 else "ETH"}\n')
             except Exception as e:
                 cprint(f'Failed to extract created nfts for {address}: {e}', 'red')
                 return
