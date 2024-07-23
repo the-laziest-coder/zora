@@ -139,7 +139,7 @@ class Zora:
             raise Exception(f'Get account info bad status code: {resp.status_code}, response = {resp.text}')
         try:
             res = resp.json()
-            res = res[0]['result']['data']['json']
+            res = res['result']['data']['json']
             return res['emailAddress'], res['emailVerified'], False
         except Exception as e:
             raise Exception(f'Get account info bad response: response = {resp.text}: {str(e)}')
