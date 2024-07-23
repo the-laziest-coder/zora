@@ -68,7 +68,10 @@ class InsufficientFundsException(Exception):
 
 def send_tx(w3, private_key, tx, verify_func, action, tx_change_func=None):
     try:
-        estimate = w3.eth.estimate_gas(tx)
+        try:
+            estimate = w3.eth.estimate_gas(tx)
+        except Exception as est_exc:
+            raise Exception(f'Simulating tx failed: {est_exc}')
         tx['gas'] = int(estimate * 1.1)
 
         if tx_change_func:

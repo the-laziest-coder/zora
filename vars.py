@@ -64,7 +64,8 @@ ZORA_BRIDGE_ADDRESS = '0x1a0ad011913A150f69f6A19DF447A0CfD9551054'
 ZORA_BRIDGE_ABI = json.load(open('abi/zora_bridge.json'))
 
 ZORA_ERC721_ABI = json.load(open('abi/zora_erc721.json'))
-ZORA_ERC1155_ABI = json.load(open('abi/zora_erc_1155.json'))
+ZORA_ERC1155_ABI_OLD = json.load(open('abi/zora_erc_1155_old.json'))
+ZORA_ERC1155_ABI_NEW = json.load(open('abi/zora_erc_1155_new.json'))
 CUSTOM_ERC721_ABI = json.load(open('abi/custom_erc721.json'))
 
 MINTER_ADDRESSES = {
@@ -155,6 +156,9 @@ ERC20_MINTER_ABI = json.load(open('abi/erc20_minter.json'))
 
 JSON_EXTENSION_REGISTRY = '0xABCDEFEd93200601e1dFe26D6644758801D732E8'
 JSON_EXTENSION_REGISTRY_ABI = json.load(open('abi/json_extension_registry.json'))
+
+PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
+PERMIT2_ABI = json.load(open('abi/permit2.json'))
 
 PROFILE_PERSONALIZATION_FORMAT = '''{{
   "theme": {{

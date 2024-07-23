@@ -476,23 +476,8 @@ class Runner:
         except InsufficientFundsException as e:
             raise InsufficientFundsException(e.msg, e.chain, 'bridge' if e.action is None else e.action)
 
-    def swap(self, w3, token_to, amount_out):
-        token = w3.eth.contract(token_to, abi=ERC_20_ABI)
-        symbol = token.functions.symbol().call()
-        decimals = token.functions.decimals().call()
-
-        if token.functions.balanceOf(self.address).call() >= amount_out:
-            logger.print(f'Enough ${symbol} balance')
-            return
-
-        if SWAP_MULTIPLIER > 1:
-            multiplier = round(random.uniform(SWAP_MULTIPLIER * 0.9, SWAP_MULTIPLIER * 1.1), 2)
-            multiplier = max(multiplier, 1)
-            amount_out = int(amount_out * multiplier)
-
-        logger.print(f'Swapping ETH for {"%.4f" % int_to_decimal(amount_out, decimals)} ${symbol}')
-
-        amount = int(amount_out * 1.0)
+    def _quote_and_execute_uniswap(self, w3, amount, token_in, token_out, swap_type, desc):
+        self.wait_for_eth_gas_price(w3)
         body = {
             'amount': str(amount),
             'configs': [{
@@ -503,13 +488,13 @@ class Runner:
                 'routingType': 'CLASSIC',
             }],
             'intent': 'quote',
-            'sendPortionEnabled': False,
+            'sendPortionEnabled': True,
             'swapper': self.address,
-            'tokenIn': 'ETH',
+            'tokenIn': token_in,
             'tokenInChainId': w3.current_chain_id,
-            'tokenOut': token_to,
+            'tokenOut': token_out,
             'tokenOutChainId': w3.current_chain_id,
-            'type': 'EXACT_OUTPUT',
+            'type': swap_type,
             'useUniswapX': True,
         }
         headers = {
@@ -543,16 +528,62 @@ class Runner:
             'from': self.address,
             'to': Web3.to_checksum_address(quote['to']),
             'data': to_bytes(quote['calldata']),
-            'value': int(quote['value'], 16),
         }
+        if quote.get('value') is not None:
+            tx['value'] = int(quote['value'], 16)
         max_priority_fee = w3.eth.max_priority_fee
         latest_block = w3.eth.get_block("latest")
         max_fee_per_gas = max_priority_fee + int(latest_block["baseFeePerGas"] * random.uniform(1.15, 1.2))
         tx['maxPriorityFeePerGas'] = max_priority_fee
         tx['maxFeePerGas'] = max_fee_per_gas
 
-        self.send_tx(w3, tx, 'Swap for $' + symbol)
-        wait_next_tx()
+        if token_in != 'ETH':
+            raise Exception('Swap from non-ETH not supported yet')
+            token = w3.eth.contract(token_in, abi=ERC_20_ABI)
+            if token.functions.allowance(self.address, PERMIT2_ADDRESS).call() < amount:
+                self.build_and_send_tx(w3, token.functions.approve(PERMIT2_ADDRESS, 2 ** 256 - 1),
+                                       f'Approve ${token.functions.symbol().call()} for Permit2')
+                wait_next_tx()
+
+        self.send_tx(w3, tx, desc)
+
+    def swap_exact_input(self, w3, token_in, amount_in, token_out):
+        if token_in == 'ETH' and token_out == 'ETH':
+            raise Exception('Both token_in and token_out cannot be ETH')
+        if token_in != 'ETH' and token_out != 'ETH':
+            raise Exception('Both token_in and token_out cannot be not ETH')
+        if token_in == 'ETH':
+            symbol_in, decimals_in = 'ETH', 18
+            token = w3.eth.contract(token_out, abi=ERC_20_ABI)
+            symbol_out, decimals_out = token.functions.symbol().call(), token.functions.decimals().call()
+        else:
+            symbol_out, decimals_out = 'ETH', 18
+            token = w3.eth.contract(token_in, abi=ERC_20_ABI)
+            symbol_in, decimals_in = token.functions.symbol().call(), token.functions.decimals().call()
+
+        logger.print(f'Swapping {int_to_decimal(amount_in, decimals_in)} {symbol_in} for {symbol_out}')
+
+        self._quote_and_execute_uniswap(w3, amount_in, token_in, token_out, 'EXACT_INPUT',
+                                        f'Swap {symbol_in} for ' + symbol_out)
+
+    def swap_exact_output_from_eth(self, w3, token_out, amount_out):
+        token = w3.eth.contract(token_out, abi=ERC_20_ABI)
+        symbol = token.functions.symbol().call()
+        decimals = token.functions.decimals().call()
+
+        if token.functions.balanceOf(self.address).call() >= amount_out:
+            logger.print(f'Enough ${symbol} balance')
+            return
+
+        if SWAP_MULTIPLIER_FOR_ERC20_MINT > 1:
+            multiplier = round(random.uniform(SWAP_MULTIPLIER_FOR_ERC20_MINT * 0.9, SWAP_MULTIPLIER_FOR_ERC20_MINT * 1.1), 2)
+            multiplier = max(multiplier, 1)
+            amount_out = int(amount_out * multiplier)
+
+        logger.print(f'Swapping ETH for {"%.4f" % int_to_decimal(amount_out, decimals)} ${symbol}')
+
+        self._quote_and_execute_uniswap(w3, amount_out, 'ETH', token_out, 'EXACT_OUTPUT',
+                                        'Swap ETH for $' + symbol)
 
     def mint_fun_tx_change(self, tx):
         if self.with_mint_fun:
@@ -599,8 +630,8 @@ class Runner:
                 raise e
 
     def _mint_with_erc20(self, w3, nft_address, token_id, erc20_minter, erc20_token, erc20_price):
-        self.wait_for_eth_gas_price(w3)
-        self.swap(w3, erc20_token, erc20_price)
+        self.swap_exact_output_from_eth(w3, erc20_token, erc20_price)
+        wait_next_tx()
         erc20 = w3.eth.contract(erc20_token, abi=ERC_20_ABI)
         symbol = erc20.functions.symbol().call()
         if erc20.functions.allowance(self.address, ERC20_MINTER).call() < erc20_price:
@@ -622,14 +653,14 @@ class Runner:
             return Status.ALREADY
         return None
 
-    def _mint_erc1155(self, w3, nft_address, token_id, simulate, with_rewards=True):
-        contract = w3.eth.contract(nft_address, abi=ZORA_ERC1155_ABI)
+    def _mint_erc1155(self, w3, nft_address, token_id, simulate, with_rewards=True, newer_version=True):
+        contract = w3.eth.contract(nft_address, abi=ZORA_ERC1155_ABI_NEW if newer_version else ZORA_ERC1155_ABI_OLD)
 
         balance = contract.functions.balanceOf(self.address, token_id).call()
         if balance >= NFT_PER_ADDRESS:
             return Status.ALREADY, None
 
-        if get_chain(w3) == 'Zora' and not simulate and with_rewards:
+        if get_chain(w3) == 'Zora' and not simulate and (with_rewards or newer_version):
             erc20_minter = w3.eth.contract(ERC20_MINTER, abi=ERC20_MINTER_ABI)
             sale_config = erc20_minter.functions.sale(nft_address, token_id).call()
             erc20_token = sale_config[-1]
@@ -661,7 +692,11 @@ class Runner:
         mint_args = eth_abi.encode(['address', 'bytes'], [self.address, bytes(comment, 'utf-8')]).hex()
         bs = '0x' + mint_args
 
-        if with_rewards:
+        if newer_version:
+            args = (minter_address, token_id, 1,
+                    [Web3.to_checksum_address(MINT_REF_ADDRESS if REF == '' else REF)], to_bytes(bs))
+            func = contract.functions.mint
+        elif with_rewards:
             args = (minter_address, token_id, 1, to_bytes(bs),
                     Web3.to_checksum_address(MINT_REF_ADDRESS if REF == '' else REF))
             func = contract.functions.mintWithRewards
@@ -686,7 +721,14 @@ class Runner:
             return self._mint_erc1155(w3, nft_address, token_id, simulate)
         except web3.exceptions.ContractLogicError as e:
             if 'execution reverted' in str(e):
-                return self._mint_erc1155(w3, nft_address, token_id, simulate, with_rewards=False)
+                try:
+                    return self._mint_erc1155(w3, nft_address, token_id, simulate, newer_version=False)
+                except web3.exceptions.ContractLogicError as old_exc:
+                    if 'execution reverted' in str(e):
+                        return self._mint_erc1155(w3, nft_address, token_id, simulate,
+                                                  with_rewards=False, newer_version=False)
+                    else:
+                        raise old_exc
             else:
                 raise e
 
@@ -1048,7 +1090,7 @@ class Runner:
         w3 = self.w3('Zora')
         collection_address = Web3.to_checksum_address(collection_address)
         logger.print(f'Creating new NFT for collection {collection_address}')
-        contract = w3.eth.contract(collection_address, abi=ZORA_ERC1155_ABI)
+        contract = w3.eth.contract(collection_address, abi=ZORA_ERC1155_ABI_NEW)
 
         fixed_price_minter = w3.eth.contract(ZORA_1155_CREATOR_ADDRESS, abi=ZORA_1155_CREATOR_ABI). \
             functions.fixedPriceMinter().call()
@@ -1122,7 +1164,7 @@ class Runner:
                 collection_link = f'https://zora.co/collect/zora:{collection_address}'
                 if is_erc_1155:
                     w3 = self.w3('Zora')
-                    contract = w3.eth.contract(Web3.to_checksum_address(collection_address), abi=ZORA_ERC1155_ABI)
+                    contract = w3.eth.contract(Web3.to_checksum_address(collection_address), abi=ZORA_ERC1155_ABI_NEW)
                     next_token_id = contract.functions.nextTokenId().call()
                     collection_link += f'/{next_token_id - 1}'
                 logger.print(f'Create: {collection_link}', color='green')
@@ -1135,7 +1177,7 @@ class Runner:
     def save_created_1155_nft(self, collection_address):
         collection_link = f'https://zora.co/collect/zora:{collection_address.lower()}'
         w3 = self.w3('Zora')
-        contract = w3.eth.contract(Web3.to_checksum_address(collection_address), abi=ZORA_ERC1155_ABI)
+        contract = w3.eth.contract(Web3.to_checksum_address(collection_address), abi=ZORA_ERC1155_ABI_NEW)
         next_token_id = contract.functions.nextTokenId().call()
         collection_link += f'/{next_token_id - 1}'
         logger.print(f'Create: {collection_link}', color='green')
@@ -1197,7 +1239,7 @@ class Runner:
         return Status.SUCCESS
 
     def update_collection_1155(self, w3, collection_address):
-        contract = w3.eth.contract(collection_address, abi=ZORA_ERC1155_ABI)
+        contract = w3.eth.contract(collection_address, abi=ZORA_ERC1155_ABI_NEW)
         name = ' '.join(get_random_words(random.randint(1, 3))).title()
         description = self.generate_description()
         image_uri = self.get_image_uri(name)
@@ -1219,7 +1261,7 @@ class Runner:
         )
 
     def update_nft_1155(self, w3, collection_address):
-        contract = w3.eth.contract(collection_address, abi=ZORA_ERC1155_ABI)
+        contract = w3.eth.contract(collection_address, abi=ZORA_ERC1155_ABI_NEW)
         name = ' '.join(get_random_words(random.randint(1, 3))).title()
         description = self.generate_description()
         image_uri = self.get_image_uri(name)
@@ -1283,7 +1325,7 @@ class Runner:
         w3 = self.w3('Zora')
         collection_address = Web3.to_checksum_address(collection_address)
         logger.print(f'Admin mint ERC1155: Collection {collection_address}')
-        contract = w3.eth.contract(collection_address, abi=ZORA_ERC1155_ABI)
+        contract = w3.eth.contract(collection_address, abi=ZORA_ERC1155_ABI_NEW)
         data = f'0xc238d1ee' \
                f'000000000000000000000000{self.address.lower()[2:]}' \
                f'0000000000000000000000000000000000000000000000000000000000000001' \
@@ -1331,7 +1373,7 @@ class Runner:
 
     def read_ipfs(self, ipfs_url: str):
         try:
-            url = 'https://magic.decentralized-content.com' + ipfs_url.replace('://', '/')
+            url = 'https://magic.decentralized-content.com/' + ipfs_url.replace('://', '/')
             resp = requests.get(url, proxies=self.http_proxies, timeout=60)
             if resp.status_code != 200:
                 raise Exception(f'Bad status code = {resp.status_code}')
@@ -1388,11 +1430,32 @@ class Runner:
     def personalize(self):
         return self.zora_action_wrapper(self._personalize)
 
-    def _do_swap(self, to_eth):
-        pass
+    def _swap(self, token_to_eth):
+        w3 = self.w3('Zora')
 
-    def do_swap(self, to_eth):
-        return self.zora_action_wrapper(self._do_swap, to_eth)
+        if token_to_eth is None:
+            token_in, token_out = 'ETH', random.choice(SWAP_TOKEN_ADDRESSES)
+            eth_balance = w3.eth.get_balance(self.address)
+            amount_in = int_to_decimal(eth_balance, 18)
+            amount_in = amount_in * random.uniform(SWAP_ETH_PERCENT[0], SWAP_NON_ETH_PERCENT[1]) / 100
+            amount_in = round(amount_in, random.randint(4, 5))
+            amount_in = decimal_to_int(amount_in, 18)
+        else:
+            token_in, token_out = token_to_eth, 'ETH'
+            token = w3.eth.contract(token_in, abi=ERC_20_ABI)
+            decimals = token.functions.decimals().call()
+            balance = token.functions.balanceOf(self.address).call()
+            amount_in = int_to_decimal(balance, decimals)
+            amount_in = amount_in * random.uniform(SWAP_NON_ETH_PERCENT[0], SWAP_NON_ETH_PERCENT[1]) / 100
+            amount_in = round(amount_in, random.randint(1, 2))
+            amount_in = decimal_to_int(amount_in, decimals)
+
+        self.swap_exact_input(w3, token_in, amount_in, token_out)
+
+        return token_out if token_to_eth is None else None
+
+    def swap(self, token_to_eth):
+        return self.zora_action_wrapper(self._swap, token_to_eth)
 
 
 def wait_next_run(idx, runs_count, next_tx=False):
@@ -1566,7 +1629,7 @@ def main():
 
     random.shuffle(queue)
 
-    all_actions = []
+    doubled_swap_actions_by_address = {}
     for wallet, proxy in queue:
         if wallet.find(';') == -1:
             key = wallet
@@ -1581,14 +1644,30 @@ def main():
         for acc, act in by_address:
             swap_doubled.append((acc, act))
             if type(act) is not tuple and act == 'Swap':
-                swap_doubled.append((acc, act))
-        all_actions.extend(swap_doubled)
+                swap_doubled.append((acc, (act, 'to_eth')))
+        doubled_swap_actions_by_address[address] = swap_doubled
+
     if FULL_SHUFFLE:
+        all_actions = []
+        for _, values in doubled_swap_actions_by_address.items():
+            all_actions.extend(values)
         random.shuffle(all_actions)
+    else:
+        indices = []
+        index_to_addr = {}
+        for idx, (addr, values) in enumerate(list(doubled_swap_actions_by_address.items())):
+            indices.extend([idx for _ in values])
+            index_to_addr[idx] = addr
+        random.shuffle(indices)
+        all_actions = []
+        for idx in indices:
+            all_actions.append(doubled_swap_actions_by_address[index_to_addr[idx]].pop(0))
 
     queue = all_actions
     idx, runs_count = 0, len(queue)
     prev_addr = ''
+
+    prev_swap_to = {}
 
     while len(queue) != 0:
 
@@ -1616,10 +1695,10 @@ def main():
             continue
 
         if type(module) is tuple:
-            fixed_mint = module[1]
+            fixed_mint_or_to_eth = module[1]
             module = module[0]
         else:
-            fixed_mint = None
+            fixed_mint_or_to_eth = None
 
         logger.print(f'{module}: Started', color='blue')
         try:
@@ -1640,6 +1719,13 @@ def main():
             elif module == 'Personalize':
 
                 runner.personalize()
+
+            elif module == 'Swap':
+
+                swapped_to, bridged = runner.swap(None if fixed_mint_or_to_eth is None else prev_swap_to.get(address))
+                prev_swap_to[address] = swapped_to
+                if bridged:
+                    auto_bridged_cnts[address] += 1
 
             elif module == 'Create':
 
@@ -1783,8 +1869,8 @@ def main():
                             if nft is not None:
                                 break
 
-                    if fixed_mint is not None:
-                        nft = fixed_mint
+                    if fixed_mint_or_to_eth is not None:
+                        nft = fixed_mint_or_to_eth
 
                     if nft is None:
                         nft = possible_mints.pop(0)
