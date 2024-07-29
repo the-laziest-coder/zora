@@ -2,6 +2,7 @@ https://zora.co/collect/zora:0xb61dd2318108b88bf25a16a30fd852c85e9ba6a5/1
 https://zora.co/collect/zora:0xb61dd2318108b88bf25a16a30fd852c85e9ba6a5/2
 https://zora.co/collect/zora:0xb61dd2318108b88bf25a16a30fd852c85e9ba6a5/3
 https://zora.co/collect/zora:0xb61dd2318108b88bf25a16a30fd852c85e9ba6a5/4
+https://zora.co/collect/zora:0xb61dd2318108b88bf25a16a30fd852c85e9ba6a5/5
 
 # with $enjoy
 https://zora.co/collect/zora:0x9ab830affc088401b6ee98098be20ea4d0f505a3/1

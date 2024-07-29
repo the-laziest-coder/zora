@@ -115,10 +115,6 @@ ZORA_CHAINS_REVERSE_MAP = {
     'Arbitrum': 'arb',
 }
 
-MINT_FUN_DATA_SUFFIX = '0021fb3f'
-MINT_FUN_PASS_ADDRESS = '0x0000000000664ceffed39244a8312bD895470803'
-MINT_FUN_PASS_ABI = json.load(open('abi/mint_fun_pass.json'))
-
 ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 PROTOCOL_REWARDS_ADDRESSES = {
@@ -131,23 +127,61 @@ PROTOCOL_REWARDS_ADDRESSES = {
     'Base': ['0x7777777F279eba3d3Ad8F4E708545291A6fDBA8B'],
     'Arbitrum': ['0x7777777F279eba3d3Ad8F4E708545291A6fDBA8B'],
 }
+PROTOCOL_REWARDS_ADDRESS_FOR_ZORA_SPLITS = '0x7777777F279eba3d3Ad8F4E708545291A6fDBA8B'
 PROTOCOL_REWARDS_ABI = json.load(open('abi/protocol_rewards.json'))
 
-LZ_CHAIN_IDS = {
-    'Arbitrum': 110,
-    'Optimism': 111,
-    'Zora': 195,
+MINTS_CALLER_ADDRESS = '0xb0994EB9520C98C97e1F3953a5964535C2bd271A'
+MINTS_CALLER_ABI = json.load(open('abi/mints_caller.json'))
+
+PREPAID_MINTS_ADDRESS = '0x7777777d57c1C6e472fa379b7b3B6c6ba3835073'
+PREPAID_MINTS_ABI = json.load(open('abi/prepaid_mints.json'))
+
+PREPAID_ELIGIBLE_VERSIONS = ['2.9.0', '2.10.1']
+
+PREPAID_MINT_PERMIT_TYPES = {
+    "Permit": [
+        {
+            "name": "owner",
+            "type": "address"
+        },
+        {
+            "name": "to",
+            "type": "address"
+        },
+        {
+            "name": "tokenIds",
+            "type": "uint256[]"
+        },
+        {
+            "name": "quantities",
+            "type": "uint256[]"
+        },
+        {
+            "name": "safeTransferData",
+            "type": "bytes"
+        },
+        {
+            "name": "nonce",
+            "type": "uint256"
+        },
+        {
+            "name": "deadline",
+            "type": "uint256"
+        }
+    ]
 }
 
-ZERIUS_NFT_ADDRESS = '0x178608fFe2Cca5d36f3Fc6e69426c4D3A5A74A41'
-ZERIUS_NFT_ABI = json.load(open('abi/zerius_nft.json'))
+MINTS_MANAGER_ADDRESS = '0x77777770cA269366c7208aFcF36FE2C6F7f7608B'
+MINTS_MANAGER_ABI = json.load(open('abi/mints_manager.json'))
 
-ZERIUS_REFUEL_ADDRESSES = {
-    'Arbitrum': '0x412aea168aDd34361aFEf6a2e3FC01928Fba1248',
-    'Optimism': '0x2076BDd52Af431ba0E5411b3dd9B5eeDa31BB9Eb',
-    'Zora': '0x1fe2c567169d39CCc5299727FfAC96362b2Ab90E',
-}
-ZERIUS_REFUEL_ABI = json.load(open('abi/zerius_refuel.json'))
+LAST_NFT_CONTRACT_VERSION = '2.10.1'
+LAST_NFT_CONTRACT_IMPL_ADDRESS = '0xA0CFBEA2fe941EaE373aEB3359b0171f3F194c35'
+
+SPLIT_MAIN_ADDRESS = '0x2ed6c4B5dA6378c7897AC67Ba9e43102Feb694EE'
+SPLIT_MAIN_ABI = json.load(open('abi/split_main.json'))
+
+MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11'
+MULTICALL3_ABI = json.load(open('abi/multicall3.json'))
 
 ERC_20_ABI = json.load(open('abi/erc20_token.json'))
 
@@ -159,6 +193,12 @@ JSON_EXTENSION_REGISTRY_ABI = json.load(open('abi/json_extension_registry.json')
 
 PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 PERMIT2_ABI = json.load(open('abi/permit2.json'))
+
+TOKENS_ROUNDS = {
+    '0xa6B280B42CB0b7c4a4F789eC6cCC3a7609A1Bc39': (0, 0),  # ENJOY
+    '0x078540eECC8b6d89949c9C7d5e8E91eAb64f6696': (0, 0),  # IMAGINE
+    '0xCccCCccc7021b32EBb4e8C08314bD62F7c653EC4': (1, 2),  # USDzC
+}
 
 PROFILE_PERSONALIZATION_FORMAT = '''{{
   "theme": {{

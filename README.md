@@ -7,20 +7,23 @@
  - Mint with ERC-20 tokens
  - Mint from other chain
  - Earn mint.fun points
- - Create ERC721 and ERC1155 collections
+ - Create ERC1155 collections (incl. for ERC-20 tokens)
  - Create NFT in existed ERC1155 collection
  - Update collections and NFT metadata
  - Link email and create Zora account
  - Claim rewards
  - Check wallets stats
  - Personalize profiles
+ - Swaps on Uniswap
+ - Buy prepaid mints
+ - AI generation for images
 
 ### Follow: https://t.me/thelaziestcoder
 
 ### Settings
 `files/wallets.txt` - Wallets with private keys \
 `files/proxies.txt` - Corresponding proxies for wallets \
-`files/email.txt` - Corresponding emails for wallets \
+`files/emails.txt` - Corresponding emails for wallets \
 `config.py` - Custom settings \
 `vars.py` - Contracts info 
 

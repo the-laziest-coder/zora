@@ -92,19 +92,34 @@ FULL_SHUFFLE = False
 # Требования: MINT_ALREADY_CREATED_PERCENT = 0
 MINT_BY_NFTS = False
 
+# Рандомит только четное кол-во свапов, чтобы в конце остался ETH
+EVEN_NUMBER_OF_SWAPS = True
 SWAP_TOKEN_ADDRESSES = [
     '0xa6B280B42CB0b7c4a4F789eC6cCC3a7609A1Bc39',  # ENJOY
     '0x078540eECC8b6d89949c9C7d5e8E91eAb64f6696',  # IMAGINE
     '0xCccCCccc7021b32EBb4e8C08314bD62F7c653EC4',  # USDzC
 ]
+# Делать свапы только в ETH
+SWAP_ONLY_TO_ETH = False
+# Минимальный баланс токена, из которого свапать
+SWAP_MIN_BALANCE = {
+    'ETH': 0.002,
+    '0xa6B280B42CB0b7c4a4F789eC6cCC3a7609A1Bc39': 10000,  # ENJOY
+    '0x078540eECC8b6d89949c9C7d5e8E91eAb64f6696': 1000,   # IMAGINE
+    '0xCccCCccc7021b32EBb4e8C08314bD62F7c653EC4': 5,      # USDzC
+}
 SWAP_ETH_PERCENT = (30, 50)
 SWAP_NON_ETH_PERCENT = (99, 100)
 
 # При минте нфт за ERC-20 токены, софт свапает на ровно то количество токенов, которое нужно для 1 минта
 # Можно добавить множитель для свапа, чтобы не свапать каждый раз
 # Множитель будет рандомится в пределах от -10% до +10% от указанного
-SWAP_MULTIPLIER_FOR_ERC20_MINT = 1
+SWAP_MULTIPLIER_FOR_ERC20_MINT = 1.5
 
+# С какой вероятностью покупать минты (рассчитывается перед каждым минтом), если их нет
+BUY_PREPAID_MINTS_PROBABILITY = 50
+# Сколько минтов покупать
+BUY_PREPAID_MINTS_CNT = (1, 3)
 # Добавлять рандомный комментарий к минту
 MINT_WITH_COMMENT = True
 # Вероятность оставить коммент в процентах
@@ -114,8 +129,6 @@ COMMENT_MAX_NUMBER_OF_WORDS = 1
 COMMENT_WORDS = ['nice', 'lfg', 'enjoy', '$enjoy', 'imagine', '$imagine', 'gm', 'minted', '!!!', '???', 'based', 'like']
 # Минтить только custom NFT, пропуская все остальные из files/mints.txt
 MINT_ONLY_CUSTOM = False
-# Если у вас есть mint.fun Pass, то добавятся поинты за минты
-MINT_WITH_MINT_FUN = False
 # С каким процентом минтить любую NFT из уже созданных коллекций среди всех акков
 # Если значение > 0, то при страте скрипта сначала для всех аккаунтов будут запрашиваться созданные коллекции
 # Это может занять некоторое время, если кошельков много
@@ -124,11 +137,6 @@ MINT_ALREADY_CREATED_PERCENT = 0
 # Сколько раз максимум можно минтить одну нфт. (Для кастомных проверяется MAX_NFT_PER_ADDRESS * cnt)
 MAX_NFT_PER_ADDRESS = 20
 
-# Сейчас через интерфейс можно создавать только ERC1155 коллекции,
-# но в коде остается возможность создавать ERC721 через контракт
-# Все ERC1155 NFT создаются бесплатными, с рандомным значением auto-reserve.
-# Используется также для авто-создание при admin и update
-USE_NFT_1155 = True
 # Если при исполнении действия admin или update нет созданной NFT на кошельке автоматически создавать коллекцию
 AUTO_CREATE = True
 
@@ -136,19 +144,20 @@ AUTO_CREATE = True
 # а не создавать новую коллекцию
 CREATE_USING_EXISTED_COLLECTION_PROBABILITY = 50
 
-# При update используется рандомное действие из включенных ниже.
-
-# Настройки обновления ERC721 коллекций:
-# Обновлять картинку NFT для ERC721
-UPDATE_IMAGE_ERC721 = True
-# Обновлять описание
-UPDATE_DESCRIPTION_ERC721 = True
-# Обновлять настройки сейла: цена, лимит минта на один адрес
-UPDATE_SALE_SETTINGS_ERC721 = True
-# Какую цену указывать для нфт при обновлении настроек сейла и создании ERC721 NFT. Значение округляется до 6 знаков
-MINT_PRICE = (0.000001, 0.0001)
+# С какой вероятностью создавать NFT с оплатой в другим токенах
+CREATE_FOR_ERC20_TOKENS_PROBABILITY = 0
+# Какие токены использовать, их диапазон рандомной цены и до скольки занков после запятой округлять цену
+CREATE_FOR_ERC20_TOKENS_PRICES = {
+    '0xa6B280B42CB0b7c4a4F789eC6cCC3a7609A1Bc39': (100, 1000, 0),  # ENJOY
+    '0x078540eECC8b6d89949c9C7d5e8E91eAb64f6696': (10, 100, 0),  # IMAGINE
+    # '0xCccCCccc7021b32EBb4e8C08314bD62F7c653EC4': (0.01, 0.2, 2),  # USDzC
+}
+# Шанс на использование AI генерации для всех картинок
+USE_AI_IMAGE_PROBABILITY = 100
+# Реварды будут сплитится 80/10/10 (посмотрите как это работает на сайте)
+USE_SPLIT_FOR_AI_IMAGE_PROBABILITY = 100
 # Оставлять описание созданной коллекции/нфт пустым, иначе генерирует рандомное из слов в english_words.txt
-EMPTY_DESCRIPTION = False
+EMPTY_DESCRIPTION = True
 
 # Настройки обновления ERC1155 коллекций:
 # Обновлять название/описание/картинку коллекции
@@ -166,13 +175,24 @@ BRIDGE_SOURCE_CHAIN = 'Any'
 AUTO_BRIDGE = True
 # Сколько максимум авто-бриджей скрипт может сделать на один акк
 AUTO_BRIDGE_MAX_CNT = 1
+# Процент сколько эфира бриджить, если -1, то берется BRIDGE_AMOUNT
+# Пример: (70, 80)
+BRIDGE_PERCENT = -1
+# Минимальный баланс, который должен быть при режиме бриджа в процентах
+BRIDGE_PERCENT_MIN_BALANCE = 0.01
 # Сколько бриджить эфира в Zora. Выбирается рандомное значение в диапазоне
 BRIDGE_AMOUNT = (0.007, 0.009)
 # Сколько максимум ждать бриджа. Баланс проверяется каждые 20 секунд
 BRIDGE_WAIT_TIME = 300
 
 # Если ревардов меньше, чем указанная сумма, то клема не будет.
-MIN_REWARDS_TO_CLAIM = 0.001
+# Указывается для каждого токена отдельно
+MIN_REWARDS_TO_CLAIM = {
+    'ETH': 0.0004,
+    '0xa6B280B42CB0b7c4a4F789eC6cCC3a7609A1Bc39': 10000,  # ENJOY
+    '0x078540eECC8b6d89949c9C7d5e8E91eAb64f6696': 500,    # IMAGINE
+    # '0xCccCCccc7021b32EBb4e8C08314bD62F7c653EC4': 1,    # USDzC
+}
 # В каких сетях делать клейм ревардов. Доступны только Zora и Base
 REWARDS_CHAINS = ['Zora', 'Base']
 

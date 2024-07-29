@@ -1,10 +1,28 @@
+import time
+import random
 import requests
 from typing import Dict
 from retry import retry
 from web3 import Web3
 from web3.providers import HTTPProvider
-from config import RPCs, ZORA_LOW_GAS, BASE_LOW_GAS, MAX_TRIES
+from config import RPCs, ZORA_LOW_GAS, BASE_LOW_GAS, MAX_TRIES, NEXT_TX_MIN_WAIT_TIME, NEXT_TX_MAX_WAIT_TIME
 from vars import CHAIN_NAMES, EIP1559_CHAINS
+
+
+def decimal_to_int(d, n):
+    return int(d * (10 ** n))
+
+
+def int_to_decimal(i, n):
+    return i / (10 ** n)
+
+
+def readable_amount_int(i, n, d=2):
+    return round(int_to_decimal(i, n), d)
+
+
+def wait_next_tx(x=1.0):
+    time.sleep(random.uniform(NEXT_TX_MIN_WAIT_TIME, NEXT_TX_MAX_WAIT_TIME) * x)
 
 
 def get_coin_price(coin, currency):
@@ -41,6 +59,8 @@ class HTTPProviderWithUA(HTTPProvider):
 
 @retry(tries=MAX_TRIES, delay=1.5, backoff=2, jitter=(0, 1))
 def get_w3(chain, proxy=None):
+    if proxy is not None and len(proxy) > 4 and proxy[:4] != 'http':
+        proxy = 'http://' + proxy
     req_args = {} if proxy is None or proxy == '' else {
         'proxies': {'https': proxy, 'http': proxy},
     }

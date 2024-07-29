@@ -505,6 +505,45 @@
         "type": "function"
     },
     {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "msgSender",
+                "type": "address"
+            },
+            {
+                "internalType": "string",
+                "name": "newContractURI",
+                "type": "string"
+            },
+            {
+                "internalType": "string",
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "internalType": "address",
+                "name": "contractAdmin",
+                "type": "address"
+            },
+            {
+                "internalType": "bytes[]",
+                "name": "setupActions",
+                "type": "bytes[]"
+            }
+        ],
+        "name": "deterministicContractAddressWithSetupActions",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [],
         "name": "fixedPriceMinter",
         "outputs": [
