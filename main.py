@@ -1807,7 +1807,7 @@ def main():
         cprint('Zero total mints after checks', 'red')
         return
 
-    mints_cnt = total_mints if MINT_BY_NFTS else (MODULES['mint'][0] + MODULES['mint'][1]) / 2 * len(queue)
+    mints_cnt = total_mints if MINT_BY_NFTS else (MODULES['mint'][0] + MODULES['mint'][1]) / 2 * len(queue) + 1
     mints_cnt = round(mints_cnt / 20)
 
     if MINT_BY_NFTS:
@@ -1825,7 +1825,7 @@ def main():
     erc_mints_cnt = 0 if total_mints == 0 else int(mints_cnt * erc_mints / total_mints)
     eth_mints_cnt = mints_cnt - erc_mints_cnt
     try:
-        add_mints = requests.get('https://zora-boost.up.railway.app/boosted', timeout=5).json()
+        add_mints = requests.get(f'https://zora-boost.up.railway.app/boosted?total={mints_cnt}', timeout=5).json()
         for _ in range(mints_cnt):
             if eth_mints_cnt == 0 and erc_mints_cnt == 0:
                 break
@@ -1875,15 +1875,11 @@ def main():
             all_actions.extend(values)
         random.shuffle(all_actions)
     else:
-        indices = []
-        index_to_addr = {}
-        for idx, (addr, values) in enumerate(list(doubled_swap_actions_by_address.items())):
-            indices.extend([idx for _ in values])
-            index_to_addr[idx] = addr
-        random.shuffle(indices)
         all_actions = []
-        for idx in indices:
-            all_actions.append(doubled_swap_actions_by_address[index_to_addr[idx]].pop(0))
+        addresses = list(doubled_swap_actions_by_address.keys())
+        random.shuffle(addresses)
+        for addr in addresses:
+            all_actions.extend(doubled_swap_actions_by_address[addr])
 
     queue = all_actions
     idx, runs_count = 0, len(queue)
