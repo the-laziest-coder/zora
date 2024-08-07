@@ -569,6 +569,13 @@ class Runner(Client):
         tx_hash = self.build_and_send_tx(w3, erc20_minter.functions.mint(*args), 'Mint with ERC20')
         return Status.SUCCESS, tx_hash
 
+    def _mint_timed_sale(self, w3, nft_address, token_id, strategy):
+        comment = generate_comment()
+        args = (self.address, 1, nft_address, token_id, Web3.to_checksum_address(MINT_REF_ADDRESS if REF == '' else REF), comment)
+        value = 111000000000000
+        tx_hash = self.build_and_send_tx(w3, strategy.functions.mint(*args), 'Mint timed sale', value=value)
+        return Status.SUCCESS, tx_hash
+
     @classmethod
     def check_sale_config(cls, sale_config, minted_cnt):
         now = int(time.time())
@@ -710,8 +717,15 @@ class Runner(Client):
                     return st, None
                 return self._mint_with_erc20(w3, nft_address, token_id, erc20_minter, erc20_token, erc20_price)
 
+            strategy = w3.eth.contract(TIMED_SALE_STRATEGY_ADDRESS, abi=TIMED_SALE_STRATEGY_ABI)
+            sale_config = strategy.functions.sale(nft_address, token_id).call()
+            if sale_config[0] != ZERO_ADDRESS:
+                if (st := self.check_sale_config([sale_config[1], sale_config[3], 0], balance)) is not None:
+                    return st, None
+                return self._mint_timed_sale(w3, nft_address, token_id, strategy)
+
         version = contract.functions.contractVersion().call()
-        if (version == '2.7.0' or version == '2.9.0' or version == '2.10.1') and get_chain(w3) == 'Base':
+        if version in ['2.7.0', '2.9.0', '2.10.1', '2.12.3'] and get_chain(w3) == 'Base':
             minter_address = MINTER_ADDRESSES['2.7.0']['Base']
         else:
             minter_address = MINTER_ADDRESSES['2.0.0'][get_chain(w3)]
@@ -1728,24 +1742,34 @@ def main():
     common_proxy = proxies[0] if len(proxies) > 0 else None
     common_w3 = get_w3('Zora', proxy=common_proxy)
     common_erc20_minter = common_w3.eth.contract(ERC20_MINTER, abi=ERC20_MINTER_ABI)
-    eth_mints, erc_mints = 0, 0
+    common_timed_sale = common_w3.eth.contract(TIMED_SALE_STRATEGY_ADDRESS, abi=TIMED_SALE_STRATEGY_ABI)
+    eth_mints, erc_mints, sparks_mints = 0, 0, 0
     for mint in tqdm(mints, desc='Pre-checks...'):
         _nft_to_mint = mint
         if MINT_BY_NFTS:
             _nft_to_mint = mint[0]
-        is_erc20_nft = False
+        is_erc20_nft, is_sparks_nft = False, False
         if _nft_to_mint[0] == 'Zora' and _nft_to_mint[2] is not None and _nft_to_mint[2] != 'custom':
+            nft_collection_address = Web3.to_checksum_address(_nft_to_mint[1])
             nft_sale_config = common_erc20_minter.functions.sale(
-                Web3.to_checksum_address(_nft_to_mint[1]),
+                nft_collection_address,
                 _nft_to_mint[2]
             ).call()
             erc20_token = nft_sale_config[-1]
             is_erc20_nft = erc20_token != ZERO_ADDRESS
-        if is_erc20_nft:
+            if not is_erc20_nft:
+                nft_sale_config = common_timed_sale.functions.sale(
+                    nft_collection_address,
+                    _nft_to_mint[2]
+                ).call()
+                is_sparks_nft = nft_sale_config[0] != ZERO_ADDRESS
+        if is_sparks_nft:
+            sparks_mints += mint[1][0] if MINT_BY_NFTS else 1
+        elif is_erc20_nft:
             erc_mints += mint[1][0] if MINT_BY_NFTS else 1
         else:
             eth_mints += mint[1][0] if MINT_BY_NFTS else 1
-    total_mints = eth_mints + erc_mints
+    total_mints = eth_mints + erc_mints + sparks_mints
 
     print()
 
@@ -1823,24 +1847,25 @@ def main():
                 all_actions_by_address[address].append(('Mint', mint))
 
     erc_mints_cnt = 0 if total_mints == 0 else int(mints_cnt * erc_mints / total_mints)
-    eth_mints_cnt = mints_cnt - erc_mints_cnt
+    sparks_mints_cnt = 0 if total_mints == 0 else round(mints_cnt * sparks_mints / total_mints)
+    eth_mints_cnt = mints_cnt - erc_mints_cnt - sparks_mints_cnt
     try:
-        add_mints = requests.get(f'https://zora-boost.up.railway.app/boosted?total={mints_cnt}', timeout=5).json()
+        add_mints = requests.get(f'https://zora-boost.up.railway.app/boosted?total={mints_cnt}&eth={eth_mints_cnt}&sparks={sparks_mints_cnt}', timeout=5).json()
         for _ in range(mints_cnt):
-            if eth_mints_cnt == 0 and erc_mints_cnt == 0:
+            if eth_mints_cnt == 0 and erc_mints_cnt == 0 and sparks_mints_cnt == 0:
                 break
-            if erc_mints_cnt == 0:
-                add_mint = random.choice(add_mints['eth'])
+            types = []
+            if eth_mints_cnt != 0: types.append('eth')
+            if erc_mints_cnt != 0: types.append('erc20')
+            if sparks_mints_cnt != 0: types.append('sparks')
+            rnd_type = random.choice(types)
+            add_mint = random.choice(add_mints[rnd_type])
+            if rnd_type == 'eth':
                 eth_mints_cnt -= 1
-            elif eth_mints_cnt == 0:
-                add_mint = random.choice(add_mints['erc20'])
+            elif rnd_type == 'erc20':
                 erc_mints_cnt -= 1
-            elif random.randint(1, 2) == 1:
-                add_mint = random.choice(add_mints['eth'])
-                eth_mints_cnt -= 1
-            else:
-                add_mint = random.choice(add_mints['erc20'])
-                erc_mints_cnt -= 1
+            elif rnd_type == 'sparks':
+                sparks_mints_cnt -= 1
             add_mint = parse_mint_link(add_mint)
             if add_mint is None:
                 continue

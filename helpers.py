@@ -90,9 +90,8 @@ def get_random_words(n: int):
 
 
 def generate_comment():
-    if not MINT_WITH_COMMENT:
-        return ''
-    if random.randint(1, 100) > COMMENT_PROBABILITY:
+    if not MINT_WITH_COMMENT or random.randint(1, 100) > COMMENT_PROBABILITY:
+        logger.print('[No comment]')
         return ''
     words = []
     for w in random.sample(COMMENT_WORDS, random.randint(1, COMMENT_MAX_NUMBER_OF_WORDS)):
@@ -111,5 +110,5 @@ def generate_comment():
         comment += '!'
         if random.randint(1, 4) == 1:
             comment += '!!'
-    logger.print(f'{"[No comment]" if comment == "" else "Comment: " + comment}')
+    logger.print('Comment: ' + comment)
     return comment

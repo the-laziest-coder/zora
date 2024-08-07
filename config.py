@@ -68,7 +68,7 @@ OKX_WITHDRAW_ETH_AMOUNT = (0.007, 0.01)
 # Формат - <действие>: (<минимальное кол-во>, <максимальное кол-во>)
 # Для каждого акка и действия выбирается рандомное кол-во транзакций в указанном диапазоне
 MODULES = {
-    'mint': (0, 0),
+    'mint': (2, 2),
     'admin': (0, 0),
     'create': (0, 0),
     'update': (0, 0),
@@ -117,16 +117,18 @@ SWAP_NON_ETH_PERCENT = (99, 100)
 SWAP_MULTIPLIER_FOR_ERC20_MINT = 1.5
 
 # С какой вероятностью покупать минты (рассчитывается перед каждым минтом), если их нет
-BUY_PREPAID_MINTS_PROBABILITY = 50
+# Уже недоступно через UI
+BUY_PREPAID_MINTS_PROBABILITY = 0
 # Сколько минтов покупать
 BUY_PREPAID_MINTS_CNT = (1, 3)
+
 # Добавлять рандомный комментарий к минту
 MINT_WITH_COMMENT = True
 # Вероятность оставить коммент в процентах
-COMMENT_PROBABILITY = 20
+COMMENT_PROBABILITY = 15
 # Максимальное кол-во слов в комменте, Выбирается рандомное
 COMMENT_MAX_NUMBER_OF_WORDS = 1
-COMMENT_WORDS = ['nice', 'lfg', 'enjoy', '$enjoy', 'imagine', '$imagine', 'gm', 'minted', '!!!', '???', 'based', 'like']
+COMMENT_WORDS = ['nice', 'lfg', 'enjoy', 'imagine', 'gm', 'minted', '!!!', '???', 'based', 'like']
 # Минтить только custom NFT, пропуская все остальные из files/mints.txt
 MINT_ONLY_CUSTOM = False
 # С каким процентом минтить любую NFT из уже созданных коллекций среди всех акков
