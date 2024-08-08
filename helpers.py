@@ -94,7 +94,7 @@ def generate_comment():
         logger.print('[No comment]')
         return ''
     words = []
-    for w in random.sample(COMMENT_WORDS, random.randint(1, COMMENT_MAX_NUMBER_OF_WORDS)):
+    for w in random.sample(COMMENT_WORDS, random.randint(1, min(COMMENT_MAX_NUMBER_OF_WORDS, 3))):
         word = w
         rnd = random.randint(1, 3)
         if rnd == 1:

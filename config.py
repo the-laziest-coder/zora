@@ -58,6 +58,7 @@ OKX_WITHDRAW_ETH_AMOUNT = (0.007, 0.01)
 
 # Модули, которые будут выполняться на каждом акке
 # 'mint' - минт рандомной нфт из files/mints.txt, которой еще нет на акке
+# 'sale' - продать нфт, только те, которые минтились за ✧111
 # 'admin' - минт рандомной нфт среди созданных, нет комиссии 0.000777
 # 'create' - создание своей нфт
 # 'update' - обновить параметры рандомной созданной ERC721 коллекции
@@ -68,7 +69,8 @@ OKX_WITHDRAW_ETH_AMOUNT = (0.007, 0.01)
 # Формат - <действие>: (<минимальное кол-во>, <максимальное кол-во>)
 # Для каждого акка и действия выбирается рандомное кол-во транзакций в указанном диапазоне
 MODULES = {
-    'mint': (2, 2),
+    'mint': (0, 0),
+    'sale': (1, 1),
     'admin': (0, 0),
     'create': (0, 0),
     'update': (0, 0),
@@ -91,6 +93,16 @@ FULL_SHUFFLE = False
 # link|min_cnt-max_cnt или link|cnt
 # Требования: MINT_ALREADY_CREATED_PERCENT = 0
 MINT_BY_NFTS = False
+
+# Список NFT для продажи, только который минтились за ✧111
+# Формат: (contract address, token id)
+SALE_NFTS = [
+    ('0x86aF55FC811FEF6f9729D32aDcf2c253CA5A16C1', 2),  # Limitless Zorb
+]
+# Сколько NFT продавать в процентах от баланса
+SALE_AMOUNT_PERCENT = 10
+# При сколько иксах от минта продавать, если меньше, то не будет продавать
+SALE_MINIMUM_PROFIT_X = 4
 
 # Рандомит только четное кол-во свапов, чтобы в конце остался ETH
 EVEN_NUMBER_OF_SWAPS = True
@@ -128,7 +140,7 @@ MINT_WITH_COMMENT = True
 COMMENT_PROBABILITY = 15
 # Максимальное кол-во слов в комменте, Выбирается рандомное
 COMMENT_MAX_NUMBER_OF_WORDS = 1
-COMMENT_WORDS = ['nice', 'lfg', 'enjoy', 'imagine', 'gm', 'minted', '!!!', '???', 'based', 'like']
+COMMENT_WORDS = ['nice', 'lfg', 'enjoy', 'imagine', 'gm', 'minted', '!!!', 'based', 'like']
 # Минтить только custom NFT, пропуская все остальные из files/mints.txt
 MINT_ONLY_CUSTOM = False
 # С каким процентом минтить любую NFT из уже созданных коллекций среди всех акков

@@ -569,10 +569,12 @@ class Runner(Client):
         tx_hash = self.build_and_send_tx(w3, erc20_minter.functions.mint(*args), 'Mint with ERC20')
         return Status.SUCCESS, tx_hash
 
+    TIMED_SALE_PRICE = 111000000000000
+
     def _mint_timed_sale(self, w3, nft_address, token_id, strategy):
         comment = generate_comment()
         args = (self.address, 1, nft_address, token_id, Web3.to_checksum_address(MINT_REF_ADDRESS if REF == '' else REF), comment)
-        value = 111000000000000
+        value = self.TIMED_SALE_PRICE
         tx_hash = self.build_and_send_tx(w3, strategy.functions.mint(*args), 'Mint timed sale', value=value)
         return Status.SUCCESS, tx_hash
 
@@ -1624,6 +1626,117 @@ class Runner(Client):
     def swap(self):
         return self.zora_action_wrapper(self._swap, need_auth=False)
 
+    def _quote_uniswap(self, w3, token_from, amount_from, token_to):
+        body = {
+            'amount': str(amount_from),
+            'configs': [{
+                'enableFeeOnTransferFeeFetching': True,
+                'enableUniversalRouter': True,
+                'protocols': ['V2', 'V3', 'MIXED'],
+                'recipient': self.address,
+                'routingType': 'CLASSIC',
+            }],
+            'intent': 'quote',
+            'sendPortionEnabled': True,
+            'swapper': self.address,
+            'tokenIn': token_from,
+            'tokenInChainId': w3.current_chain_id,
+            'tokenOut': token_to,
+            'tokenOutChainId': w3.current_chain_id,
+            'type': 'EXACT_INPUT',
+            'useUniswapX': True,
+        }
+        headers = {
+            'Accept': '*/*',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Content-Type': 'text/plain;charset=UTF-8',
+            'Origin': 'https://app.uniswap.org',
+            'Priority': 'u=1, i',
+            'Referer': 'https://app.uniswap.org/',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-site',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"macOS"',
+            'X-Request-Source': 'uniswap-web',
+        }
+        resp = requests.post('https://interface.gateway.uniswap.org/v2/quote',
+                             json=body, headers=headers, proxies=self.http_proxies)
+
+        try:
+            quote = resp.json()
+            quote = quote['quote']['quote']
+            return int(quote)
+        except Exception as e:
+            raise Exception(f'Quote failed: {e}. Status = {resp.status_code}, Response = {resp.text}')
+
+    def _sale_nft(self, w3, nft_address, token_id, strategy):
+        nft_address, token_id = Web3.to_checksum_address(nft_address), int(token_id)
+        logger.print(f'Trying to sell NFT: {nft_address} - {token_id}')
+
+        nft_contract = w3.eth.contract(nft_address, abi=ZORA_ERC1155_ABI_NEW)
+        balance = nft_contract.functions.balanceOf(self.address, token_id).call()
+        if balance == 0:
+            logger.print('No NFT in wallet')
+            return
+
+        logger.print(f'{balance} NFTs in wallet')
+        amount_to_sell = round(balance * SALE_AMOUNT_PERCENT / 100)
+
+        sale_config = strategy.functions.sale(nft_address, token_id).call()
+        nft_token_address = sale_config[0]
+        if nft_token_address == ZERO_ADDRESS:
+            logger.print('NFT is not available for secondary market')
+            return
+        now = int(time.time())
+        if now <= sale_config[3]:
+            logger.print('Mint is not ended')
+            return
+
+        logger.print(f'Selling {amount_to_sell} NFTs')
+        self.wait_for_eth_gas_price(w3)
+
+        quoted = self._quote_uniswap(w3, nft_token_address, amount_to_sell * 10 ** 18, 'ETH')
+
+        spent_amount = amount_to_sell * self.TIMED_SALE_PRICE
+        profit_x = round(quoted / spent_amount, 2)
+        logger.print(f'Can sell for {int_to_decimal(quoted, NATIVE_DECIMALS)} ETH. Current profit: {profit_x}x')
+        if spent_amount * SALE_MINIMUM_PROFIT_X > quoted:
+            logger.print('Too low profit')
+            return
+
+        if not nft_contract.functions.isApprovedForAll(self.address, SECONDARY_SWAP_ADDRESS).call():
+            self.build_and_send_tx(w3, nft_contract.functions.setApprovalForAll(SECONDARY_SWAP_ADDRESS, True), 'Approve for sell')
+            wait_next_tx()
+
+        secondary_swap = w3.eth.contract(SECONDARY_SWAP_ADDRESS, abi=SECONDARY_SWAP_ABI)
+        args = (nft_token_address, amount_to_sell, self.address, int(quoted * 0.9), 0)
+        self.build_and_send_tx(w3, secondary_swap.functions.sell1155(*args), 'Sale')
+
+        return True
+
+    def _sale(self):
+        w3 = self.w3('Zora')
+        strategy = w3.eth.contract(TIMED_SALE_STRATEGY_ADDRESS, abi=TIMED_SALE_STRATEGY_ABI)
+        prev_sold = False
+        for nft_address, token_id in SALE_NFTS:
+            if prev_sold:
+                wait_next_tx()
+            prev_sold = False
+            try:
+                sold = self._sale_nft(w3, nft_address, token_id, strategy)
+                prev_sold = sold is not None
+            except Exception as e:
+                logger.print(f'Failed to sell NFT: {e}', color='red')
+        return Status.SUCCESS
+
+
+    def sale(self):
+        return self.zora_action_wrapper(self._sale)
+
 
 def wait_next_run(idx, runs_count, next_tx=False):
     wait = random.randint(
@@ -1947,6 +2060,10 @@ def main():
             if module == 'Claim':
 
                 runner.claim()
+
+            elif module == 'Sale':
+
+                runner.sale()
 
             elif module == 'Bridge':
 
