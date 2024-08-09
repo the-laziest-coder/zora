@@ -1582,7 +1582,7 @@ class Runner(Client):
     def personalize(self):
         return self.zora_action_wrapper(self._personalize)
 
-    def _swap(self):
+    def _swap(self, only_to_eth):
         w3 = self.w3('Zora')
 
         token_in, token_out, amount_in = None, None, None
@@ -1604,7 +1604,7 @@ class Runner(Client):
             amount_in = decimal_to_int(amount_in, decimals)
             break
         if token_in is None:
-            if SWAP_ONLY_TO_ETH:
+            if SWAP_ONLY_TO_ETH or only_to_eth:
                 logger.print('No tokens found with enough balance in swap only to ETH mode')
                 return Status.SUCCESS
             eth_balance = w3.eth.get_balance(self.address)
@@ -1623,8 +1623,8 @@ class Runner(Client):
 
         return Status.SUCCESS
 
-    def swap(self):
-        return self.zora_action_wrapper(self._swap, need_auth=False)
+    def swap(self, only_to_eth=False):
+        return self.zora_action_wrapper(self._swap, only_to_eth, need_auth=False)
 
     def _quote_uniswap(self, w3, token_from, amount_from, token_to):
         body = {
@@ -1923,6 +1923,8 @@ def main():
                 else:
                     actions_cnt += 1 if random.randint(1, 2) == 1 else -1
             modules.extend([action for _ in range(actions_cnt)])
+            if action.lower() == 'swap' and EVEN_NUMBER_OF_SWAPS and actions_cnt > 0:
+                modules[-1] = (action, True)
         all_actions_by_address[address] = [m.capitalize() for m in modules]
 
         created_mints[address] = []
@@ -2080,7 +2082,7 @@ def main():
 
             elif module == 'Swap':
 
-                _, bridged = runner.swap()
+                _, bridged = runner.swap(fixed_mint_or_to_eth)
                 if bridged:
                     auto_bridged_cnts[address] += 1
 
