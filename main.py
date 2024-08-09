@@ -571,12 +571,12 @@ class Runner(Client):
 
     TIMED_SALE_PRICE = 111000000000000
 
-    def _mint_timed_sale(self, w3, nft_address, token_id, strategy):
+    def _mint_timed_sale(self, w3, nft_address, token_id, strategy, simulate):
         comment = generate_comment()
         args = (self.address, 1, nft_address, token_id, Web3.to_checksum_address(MINT_REF_ADDRESS if REF == '' else REF), comment)
         value = self.TIMED_SALE_PRICE
-        tx_hash = self.build_and_send_tx(w3, strategy.functions.mint(*args), 'Mint timed sale', value=value)
-        return Status.SUCCESS, tx_hash
+        tx_hash_or_data = self.build_and_send_tx(w3, strategy.functions.mint(*args), 'Mint timed sale', value=value, simulate=simulate)
+        return Status.SUCCESS, tx_hash_or_data
 
     @classmethod
     def check_sale_config(cls, sale_config, minted_cnt):
@@ -709,6 +709,14 @@ class Runner(Client):
         if balance >= NFT_PER_ADDRESS:
             return Status.ALREADY, None
 
+        if get_chain(w3) in ['Zora', 'Base'] and newer_version:
+            strategy = w3.eth.contract(TIMED_SALE_STRATEGY_ADDRESS, abi=TIMED_SALE_STRATEGY_ABI)
+            sale_config = strategy.functions.sale(nft_address, token_id).call()
+            if sale_config[0] != ZERO_ADDRESS:
+                if (st := self.check_sale_config([sale_config[1], sale_config[3], 0], balance)) is not None:
+                    return st, None
+                return self._mint_timed_sale(w3, nft_address, token_id, strategy, simulate)
+
         if get_chain(w3) == 'Zora' and not simulate and (with_rewards or newer_version):
             erc20_minter = w3.eth.contract(ERC20_MINTER, abi=ERC20_MINTER_ABI)
             sale_config = erc20_minter.functions.sale(nft_address, token_id).call()
@@ -719,15 +727,8 @@ class Runner(Client):
                     return st, None
                 return self._mint_with_erc20(w3, nft_address, token_id, erc20_minter, erc20_token, erc20_price)
 
-            strategy = w3.eth.contract(TIMED_SALE_STRATEGY_ADDRESS, abi=TIMED_SALE_STRATEGY_ABI)
-            sale_config = strategy.functions.sale(nft_address, token_id).call()
-            if sale_config[0] != ZERO_ADDRESS:
-                if (st := self.check_sale_config([sale_config[1], sale_config[3], 0], balance)) is not None:
-                    return st, None
-                return self._mint_timed_sale(w3, nft_address, token_id, strategy)
-
         version = contract.functions.contractVersion().call()
-        if version in ['2.7.0', '2.9.0', '2.10.1', '2.12.3'] and get_chain(w3) == 'Base':
+        if version in ['2.7.0', '2.9.0', '2.10.1', '2.12.2'] and get_chain(w3) == 'Base':
             minter_address = MINTER_ADDRESSES['2.7.0']['Base']
         else:
             minter_address = MINTER_ADDRESSES['2.0.0'][get_chain(w3)]
@@ -925,7 +926,7 @@ class Runner(Client):
 
     def check_nft_contract_version(self, w3, contract):
         version = contract.functions.contractVersion().call()
-        if version == LAST_NFT_CONTRACT_VERSION:
+        if version in [LAST_NFT_CONTRACT_VERSION, LAST_TIMED_SALE_NFT_CONTRACT_VERSION]:
             return
         self.build_and_send_tx(
             w3,
