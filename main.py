@@ -1925,7 +1925,7 @@ def main():
             modules.extend([action for _ in range(actions_cnt)])
             if action.lower() == 'swap' and EVEN_NUMBER_OF_SWAPS and actions_cnt > 0:
                 modules[-1] = (action, True)
-        all_actions_by_address[address] = [m.capitalize() for m in modules]
+        all_actions_by_address[address] = [(m[0].capitalize(), m[1]) if type(m) is tuple else m.capitalize() for m in modules]
 
         created_mints[address] = []
         if MINT_ALREADY_CREATED_PERCENT > 0:
