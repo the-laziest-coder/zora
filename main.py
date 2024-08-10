@@ -493,7 +493,7 @@ class Runner(Client):
         commands = [commands[i:i+2] for i in range(0, len(commands), 2)]
         inputs = [inp.replace(self.address.lower()[2:], '1'.zfill(40)) for inp in inputs]
 
-        if any(c not in ['00', '01', '0b', '0c'] for c in commands):
+        if any(c not in ['00', '01', '04', '0b', '0c'] for c in commands):
             raise Exception(f'Unknown list of Uniswap commands: {commands}')
 
         if permit_input_hex is not None:
@@ -1887,6 +1887,8 @@ def main():
 
     print()
 
+    swaps_by_address = {}
+
     tqdm_desc = 'Extracting created nfts...' if EXTRACT_CREATED_NFTS else 'Initializing...'
     for wallet, proxy in tqdm(queue, desc=tqdm_desc):
         if wallet.find(';') == -1:
@@ -1910,6 +1912,7 @@ def main():
         minted_in_runs[address] = set()
         auto_bridged_cnts[address] = 0
         auto_created_cnts[address] = 0
+        swaps_by_address[address] = 0
 
         modules = []
         for action, (min_cnt, max_cnt) in MODULES.items():
@@ -1924,9 +1927,9 @@ def main():
                 else:
                     actions_cnt += 1 if random.randint(1, 2) == 1 else -1
             modules.extend([action for _ in range(actions_cnt)])
-            if action.lower() == 'swap' and EVEN_NUMBER_OF_SWAPS and actions_cnt > 0:
-                modules[-1] = (action, True)
-        all_actions_by_address[address] = [(m[0].capitalize(), m[1]) if type(m) is tuple else m.capitalize() for m in modules]
+            if action.lower() == 'swap':
+                swaps_by_address[address] += actions_cnt
+        all_actions_by_address[address] = [m.capitalize() for m in modules]
 
         created_mints[address] = []
         if MINT_ALREADY_CREATED_PERCENT > 0:
@@ -2083,9 +2086,11 @@ def main():
 
             elif module == 'Swap':
 
-                _, bridged = runner.swap(fixed_mint_or_to_eth)
+                last_swap = swaps_by_address[address] == 1
+                _, bridged = runner.swap(last_swap)
                 if bridged:
                     auto_bridged_cnts[address] += 1
+                swaps_by_address[address] -= 1
 
             elif module == 'Create':
 
