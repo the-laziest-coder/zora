@@ -2047,18 +2047,21 @@ def main():
         logger.print(address)
         prev_addr = address
 
+        if type(module) is tuple:
+            fixed_mint_or_to_eth = module[1]
+            module = module[0]
+        else:
+            fixed_mint_or_to_eth = None
+
+        if module == 'Swap':
+            swaps_by_address[address] -= 1
+
         try:
             runner = Runner(key, proxy)
         except Exception as e:
             handle_traceback()
             logger.print(f'Failed to init: {str(e)}', color='red')
             continue
-
-        if type(module) is tuple:
-            fixed_mint_or_to_eth = module[1]
-            module = module[0]
-        else:
-            fixed_mint_or_to_eth = None
 
         logger.print(f'{module}: Started', color='blue')
         try:
@@ -2086,11 +2089,10 @@ def main():
 
             elif module == 'Swap':
 
-                last_swap = swaps_by_address[address] == 1
+                last_swap = swaps_by_address[address] == 0
                 _, bridged = runner.swap(last_swap)
                 if bridged:
                     auto_bridged_cnts[address] += 1
-                swaps_by_address[address] -= 1
 
             elif module == 'Create':
 
