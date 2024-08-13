@@ -1038,6 +1038,7 @@ class Runner(Client):
     def _generate_nft_1155_setup_actions(self, next_token_id, fixed_price_minter, image_uri=None, nft_name=None):
         name = self.generate_name() if nft_name is None else nft_name
         description = self.generate_description()
+        ticker = name.replace(' ', '').upper()[:4]
 
         use_ai = image_uri is None and self.use_ai()
         use_split = use_ai and self.use_split()
@@ -1063,7 +1064,9 @@ class Runner(Client):
             nft_uri_hex += ''.join(['0' for _ in range(64 - (len(nft_uri_hex) % 64))])
 
         sale_start_time = int(time.time())
-        sale_end_time = sale_start_time + int(3600 * 24 * 30 * random.choice([1, 3, 6]))
+        mint_duration = random.choice(CREATE_MINT_DURATION)
+        sale_end_time = sale_start_time + MINT_DURATION_MAP[mint_duration.lower()]
+        logger.print(f'Mint duration: {mint_duration}')
 
         w3 = self.w3('Zora')
 
@@ -1129,9 +1132,9 @@ class Runner(Client):
             )
         else:
             set_sale_data = self._get_calldata(
-                'setSale(uint256,(uint64,uint64,uint64,uint96,address))',
-                [next_token_id, (sale_start_time, sale_end_time, 0, 0, funds_recipient)],
-                ['uint256', '(uint64,uint64,uint64,uint96,address)'],
+                'setSale(uint256,(uint64,uint64,string,string))',
+                [next_token_id, (sale_start_time, sale_end_time, name, ticker)],
+                ['uint256', '(uint64,uint64,string,string)'],
             )
 
         add_permission = self._get_calldata(
@@ -1142,10 +1145,7 @@ class Runner(Client):
             'callSale(uint256,address,bytes)',
             [next_token_id, fixed_price_minter, set_sale_data],
         )
-        admin_mint = self._get_calldata(
-            'adminMint(address,uint256,uint256,bytes)',
-            [self.address, next_token_id, 1, to_bytes(ZERO_ADDRESS)],
-        )
+
 
         setup_actions = [
             assume_last_token,
@@ -1153,10 +1153,15 @@ class Runner(Client):
             update_royalties_for_token,
             add_permission,
             call_sale,
-            admin_mint,
         ]
+        if for_erc20:
+            admin_mint = self._get_calldata(
+                'adminMint(address,uint256,uint256,bytes)',
+                [self.address, next_token_id, 1, to_bytes(ZERO_ADDRESS)],
+            )
+            setup_actions.append(admin_mint)
 
-        return setup_actions
+        return setup_actions, funds_recipient
 
     @runner_func('Create 1155 Collection')
     def _create_1155_new_collection(self):
@@ -1184,17 +1189,17 @@ class Runner(Client):
 
         new_contract_uri = self.get_json_uri(collection_params)
 
-        fixed_price_minter = contract.functions.fixedPriceMinter().call()
+        fixed_price_minter = TIMED_SALE_STRATEGY_ADDRESS
 
         first_nft_image_uri = collection_image_uri if use_same_image else None
 
-        setup_actions = self._generate_nft_1155_setup_actions(
+        setup_actions, funds_recipient = self._generate_nft_1155_setup_actions(
             1, fixed_price_minter,
             first_nft_image_uri, nft_name
         )
 
         args = (
-            new_contract_uri, collection_name, (0, 500, self.address), self.address,
+            new_contract_uri, collection_name, (0, 500, funds_recipient), self.address,
             setup_actions
         )
 
@@ -1217,12 +1222,11 @@ class Runner(Client):
         contract = w3.eth.contract(collection_address, abi=ZORA_ERC1155_ABI_NEW)
         self.check_nft_contract_version(w3, contract)
 
-        fixed_price_minter = w3.eth.contract(ZORA_1155_CREATOR_ADDRESS, abi=ZORA_1155_CREATOR_ABI). \
-            functions.fixedPriceMinter().call()
+        fixed_price_minter = TIMED_SALE_STRATEGY_ADDRESS
 
         next_token_id = contract.functions.nextTokenId().call()
 
-        setup_actions = self._generate_nft_1155_setup_actions(next_token_id, fixed_price_minter)
+        setup_actions, _ = self._generate_nft_1155_setup_actions(next_token_id, fixed_price_minter)
 
         self.wait_for_eth_gas_price(w3)
 
@@ -1849,6 +1853,10 @@ def main():
             if any(type(m[0]) is tuple for m in mints):
                 cprint('In default mint mode all mints in files/mints.txt have to be without cnt info', 'red')
                 return
+
+    if any(dur.lower() not in MINT_DURATION_MAP for dur in CREATE_MINT_DURATION):
+        cprint(f'Incorrect CREATE_MINT_DURATION. The only possible values are {list(MINT_DURATION_MAP.keys())}', 'red')
+        return
 
     created_mints, stats = {}, {}
     minted_in_runs, auto_bridged_cnts, auto_created_cnts, all_actions_by_address = {}, {}, {}, {}

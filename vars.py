@@ -300,3 +300,15 @@ PERSONALIZE_FONT_SIZES = [(32, 15, 12), (48, 18, 14), (48, 14, 12), (59, 17, 12)
 PERSONALIZE_BUTTON_SHAPES = ['inherit', 'pill', 'square']
 PERSONALIZE_BORDER_RADIUSES = [4, 16, 12, 10, 0]
 PERSONALIZE_TEXT_TRANSFORMS = ['none', 'uppercase', 'lowercase']
+
+
+MINT_DURATION_MAP = {
+    '1 hour': 3600,
+    '4 hours': 3600 * 4,
+    '24 hours': 3600 * 24,
+    '3 days': 3600 * 24 * 3,
+    '1 week': 3600 * 24 * 7,
+    '1 month': 3600 * 24 * 30,
+    '3 months': 3600 * 24 * 30 * 3,
+    '6 months': 3600 * 24 * 30 * 6,
+}
