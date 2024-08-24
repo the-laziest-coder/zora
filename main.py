@@ -1035,7 +1035,7 @@ class Runner(Client):
         split_percents = [sp * 10000 for sp in split_percents]
         return split_accounts, split_percents
 
-    def _generate_nft_1155_setup_actions(self, next_token_id, fixed_price_minter, image_uri=None, nft_name=None):
+    def _generate_nft_1155_setup_actions(self, create_chain, next_token_id, fixed_price_minter, image_uri=None, nft_name=None):
         name = self.generate_name() if nft_name is None else nft_name
         description = self.generate_description()
         ticker = name.replace(' ', '').upper()[:4]
@@ -1056,7 +1056,7 @@ class Runner(Client):
   }}
 }}'''
 
-        for_erc20 = random.randint(1, 100) <= CREATE_FOR_ERC20_TOKENS_PROBABILITY
+        for_erc20 = create_chain == 'Zora' and random.randint(1, 100) <= CREATE_FOR_ERC20_TOKENS_PROBABILITY
 
         nft_uri = self.get_json_uri(nft_params)
         nft_uri_hex = nft_uri.encode('utf-8').hex()
@@ -1064,11 +1064,8 @@ class Runner(Client):
             nft_uri_hex += ''.join(['0' for _ in range(64 - (len(nft_uri_hex) % 64))])
 
         sale_start_time = int(time.time())
-        mint_duration = random.choice(CREATE_MINT_DURATION)
-        sale_end_time = sale_start_time + MINT_DURATION_MAP[mint_duration.lower()]
-        logger.print(f'Mint duration: {mint_duration}')
 
-        w3 = self.w3('Zora')
+        w3 = self.w3(create_chain)
 
         assume_last_token = self._get_calldata('assumeLastTokenIdMatches(uint256)', [next_token_id - 1])
 
@@ -1124,6 +1121,10 @@ class Runner(Client):
 
             erc20_price = int(erc20_price * 10 ** token_decimals)
 
+            mint_duration = random.choice(CREATE_MINT_DURATION)
+            sale_end_time = sale_start_time + MINT_DURATION_MAP[mint_duration.lower()]
+            logger.print(f'Mint duration: {mint_duration}')
+
             set_sale_data = self._get_calldata(
                 'setSale(uint256,(uint64,uint64,uint64,uint256,address,address))',
                 [next_token_id, (sale_start_time, sale_end_time, 0,
@@ -1131,10 +1132,12 @@ class Runner(Client):
                 ['uint256', '(uint64,uint64,uint64,uint256,address,address)'],
             )
         else:
+            market_countdown = 86400
+            min_market_eth = self.TIMED_SALE_PRICE * 20
             set_sale_data = self._get_calldata(
-                'setSale(uint256,(uint64,uint64,string,string))',
-                [next_token_id, (sale_start_time, sale_end_time, name, ticker)],
-                ['uint256', '(uint64,uint64,string,string)'],
+                'setSaleV2(uint256,(uint64,uint64,uint256,string,string))',
+                [next_token_id, (sale_start_time, market_countdown, min_market_eth, name, ticker)],
+                ['uint256', '(uint64,uint64,uint256,string,string)'],
             )
 
         add_permission = self._get_calldata(
@@ -1165,8 +1168,10 @@ class Runner(Client):
 
     @runner_func('Create 1155 Collection')
     def _create_1155_new_collection(self):
-        logger.print('Creating new ERC-1155 Collection')
-        w3 = self.w3('Zora')
+        create_chain = random.choice(CREATE_CHAIN)
+
+        logger.print(f'Creating new ERC-1155 Collection on {create_chain}')
+        w3 = self.w3(create_chain)
         contract = w3.eth.contract(ZORA_1155_CREATOR_ADDRESS, abi=ZORA_1155_CREATOR_ABI)
 
         collection_name = self.generate_name()
@@ -1194,7 +1199,7 @@ class Runner(Client):
         first_nft_image_uri = collection_image_uri if use_same_image else None
 
         setup_actions, funds_recipient = self._generate_nft_1155_setup_actions(
-            1, fixed_price_minter,
+            create_chain, 1, fixed_price_minter,
             first_nft_image_uri, nft_name
         )
 
@@ -1215,10 +1220,11 @@ class Runner(Client):
 
     @runner_func('Create 1155 NFT')
     def _create_1155_new_nft(self, collection_address):
-        w3 = self.w3('Zora')
+        collection_address, create_chain = collection_address
         collection_address = Web3.to_checksum_address(collection_address)
-        logger.print(f'Creating new NFT for collection {collection_address}')
+        logger.print(f'Creating new NFT for collection {collection_address} on {create_chain}')
 
+        w3 = self.w3(create_chain)
         contract = w3.eth.contract(collection_address, abi=ZORA_ERC1155_ABI_NEW)
         self.check_nft_contract_version(w3, contract)
 
@@ -1226,7 +1232,7 @@ class Runner(Client):
 
         next_token_id = contract.functions.nextTokenId().call()
 
-        setup_actions, _ = self._generate_nft_1155_setup_actions(next_token_id, fixed_price_minter)
+        setup_actions, _ = self._generate_nft_1155_setup_actions(create_chain, next_token_id, fixed_price_minter)
 
         self.wait_for_eth_gas_price(w3)
 
@@ -1236,7 +1242,7 @@ class Runner(Client):
             action='Create ERC-1155 NFT',
         )
 
-        return Status.SUCCESS_WITH_EXISTED_COLLECTION, collection_address
+        return Status.SUCCESS_WITH_EXISTED_COLLECTION, (collection_address, create_chain)
 
     def _create_1155(self):
         if random.randint(1, 100) <= CREATE_USING_EXISTED_COLLECTION_PROBABILITY:
@@ -1268,7 +1274,8 @@ class Runner(Client):
                     continue
                 if timestamp_from and int(created['txn']['timestamp']) < timestamp_from:
                     continue
-                eligible_addresses.append(created['address'])
+                nft_chain = CHAIN_NAMES[created['chainId']]
+                eligible_addresses.append((created['address'], nft_chain))
             return eligible_addresses
         except Exception as e:
             raise Exception(f'status_code = {resp_raw.status_code}, response = {resp_raw.text}: {str(e)}')
@@ -1290,8 +1297,9 @@ class Runner(Client):
                 continue
 
             if collection_address:
-                collection_link = f'https://zora.co/collect/zora:{collection_address}'
-                w3 = self.w3('Zora')
+                collection_address, create_chain = collection_address
+                collection_link = f'https://zora.co/collect/{ZORA_CHAINS_REVERSE_MAP[create_chain]}:{collection_address}'
+                w3 = self.w3(create_chain)
                 contract = w3.eth.contract(Web3.to_checksum_address(collection_address), abi=ZORA_ERC1155_ABI_NEW)
                 next_token_id = contract.functions.nextTokenId().call()
                 collection_link += f'/{next_token_id - 1}'
@@ -1303,8 +1311,9 @@ class Runner(Client):
         return None
 
     def save_created_1155_nft(self, collection_address):
-        collection_link = f'https://zora.co/collect/zora:{collection_address.lower()}'
-        w3 = self.w3('Zora')
+        collection_address, create_chain = collection_address
+        collection_link = f'https://zora.co/collect/{ZORA_CHAINS_REVERSE_MAP[create_chain]}:{collection_address.lower()}'
+        w3 = self.w3(create_chain)
         contract = w3.eth.contract(Web3.to_checksum_address(collection_address), abi=ZORA_ERC1155_ABI_NEW)
         next_token_id = contract.functions.nextTokenId().call()
         collection_link += f'/{next_token_id - 1}'
@@ -1362,8 +1371,9 @@ class Runner(Client):
 
     @runner_func('Update ERC1155 Collection')
     def _update_erc_1155(self, collection_address):
+        collection_address, create_chain = collection_address
         collection_address = Web3.to_checksum_address(collection_address)
-        logger.print(f'Update ERC1155: Collection {collection_address}')
+        logger.print(f'Update ERC1155: Collection {collection_address} on {create_chain}')
         actions = []
         if UPDATE_COLLECTION_ERC1155:
             actions.append(self.update_collection_1155)
@@ -1372,7 +1382,7 @@ class Runner(Client):
         if len(actions) == 0:
             raise Exception('All update features are turned off')
 
-        w3 = self.w3('Zora')
+        w3 = self.w3(create_chain)
 
         self.wait_for_eth_gas_price(w3)
 
@@ -1384,9 +1394,10 @@ class Runner(Client):
 
     @runner_func('Admin mint ERC1155')
     def _admin_mint_1155(self, collection_address):
-        w3 = self.w3('Zora')
+        collection_address, create_chain = collection_address
+        w3 = self.w3(create_chain)
         collection_address = Web3.to_checksum_address(collection_address)
-        logger.print(f'Admin mint ERC1155: Collection {collection_address}')
+        logger.print(f'Admin mint ERC1155: Collection {collection_address} on {create_chain}')
         contract = w3.eth.contract(collection_address, abi=ZORA_ERC1155_ABI_NEW)
         self.check_nft_contract_version(w3, contract)
         data = f'0xc238d1ee' \
