@@ -86,7 +86,7 @@ class Client:
         nonce = self.get_nonce()
         issued_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
 
-        time.sleep(random.uniform(0.5, 1.5))
+        time.sleep(random.uniform(2, 5))
 
         msg = f'zora.co wants you to sign in with your Ethereum account:\n' \
               f'{self.address}\n\n' \

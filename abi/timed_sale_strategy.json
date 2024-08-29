@@ -79,6 +79,16 @@
     },
     {
         "inputs": [],
+        "name": "MarketMinimumNotReached",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "MinimumMarketEthNotMet",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "NeedsToBeAtLeastOneSaleToStartMarket",
         "type": "error"
     },
@@ -152,6 +162,21 @@
     {
         "inputs": [],
         "name": "SaleNotSet",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "SaleV2AlreadyStarted",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "SaleV2Ended",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "SaleV2NotSet",
         "type": "error"
     },
     {
@@ -367,6 +392,84 @@
             }
         ],
         "name": "SaleSet",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "collection",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            },
+            {
+                "components": [
+                    {
+                        "internalType": "uint64",
+                        "name": "saleStart",
+                        "type": "uint64"
+                    },
+                    {
+                        "internalType": "uint64",
+                        "name": "marketCountdown",
+                        "type": "uint64"
+                    },
+                    {
+                        "internalType": "uint64",
+                        "name": "saleEnd",
+                        "type": "uint64"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "secondaryActivated",
+                        "type": "bool"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "minimumMarketEth",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "poolAddress",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "address payable",
+                        "name": "erc20zAddress",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "name",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "symbol",
+                        "type": "string"
+                    }
+                ],
+                "indexed": false,
+                "internalType": "struct IZoraTimedSaleStrategy.SaleData",
+                "name": "saleData",
+                "type": "tuple"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "mintFee",
+                "type": "uint256"
+            }
+        ],
+        "name": "SaleSetV2",
         "type": "event"
     },
     {
@@ -953,6 +1056,77 @@
     {
         "inputs": [
             {
+                "internalType": "address",
+                "name": "collection",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "saleV2",
+        "outputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "uint64",
+                        "name": "saleStart",
+                        "type": "uint64"
+                    },
+                    {
+                        "internalType": "uint64",
+                        "name": "marketCountdown",
+                        "type": "uint64"
+                    },
+                    {
+                        "internalType": "uint64",
+                        "name": "saleEnd",
+                        "type": "uint64"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "secondaryActivated",
+                        "type": "bool"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "minimumMarketEth",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "poolAddress",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "address payable",
+                        "name": "erc20zAddress",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "name",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "symbol",
+                        "type": "string"
+                    }
+                ],
+                "internalType": "struct IZoraTimedSaleStrategy.SaleData",
+                "name": "",
+                "type": "tuple"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint256",
                 "name": "tokenId",
                 "type": "uint256"
@@ -986,6 +1160,51 @@
             }
         ],
         "name": "setSale",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            },
+            {
+                "components": [
+                    {
+                        "internalType": "uint64",
+                        "name": "saleStart",
+                        "type": "uint64"
+                    },
+                    {
+                        "internalType": "uint64",
+                        "name": "marketCountdown",
+                        "type": "uint64"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "minimumMarketEth",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "name",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "symbol",
+                        "type": "string"
+                    }
+                ],
+                "internalType": "struct IZoraTimedSaleStrategy.SalesConfigV2",
+                "name": "salesConfig",
+                "type": "tuple"
+            }
+        ],
+        "name": "setSaleV2",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -1038,6 +1257,29 @@
     {
         "inputs": [
             {
+                "internalType": "int256",
+                "name": "amount0Delta",
+                "type": "int256"
+            },
+            {
+                "internalType": "int256",
+                "name": "amount1Delta",
+                "type": "int256"
+            },
+            {
+                "internalType": "bytes",
+                "name": "",
+                "type": "bytes"
+            }
+        ],
+        "name": "uniswapV3SwapCallback",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "uint256",
                 "name": "tokenId",
                 "type": "uint256"
@@ -1049,7 +1291,7 @@
             },
             {
                 "internalType": "uint64",
-                "name": "newEndTime",
+                "name": "newMarketCountdown",
                 "type": "uint64"
             }
         ],
