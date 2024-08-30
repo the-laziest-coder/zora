@@ -2235,10 +2235,13 @@ def main():
                 possible_mints = copy.deepcopy(mints)
                 random.shuffle(possible_mints)
                 was_minted = False
+                fixed_mint_tried = False
 
                 while len(possible_mints) != 0:
 
-                    nft = fixed_mint_or_to_eth
+                    nft = None if fixed_mint_tried else fixed_mint_or_to_eth
+                    if nft is not None:
+                        fixed_mint_tried = True
                     if nft is None and random.randint(1, 100) <= MINT_ALREADY_CREATED_PERCENT:
                         created_addresses = list(created_mints.keys())
                         random.shuffle(created_addresses)
