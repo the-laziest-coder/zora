@@ -30,7 +30,8 @@ saved_auth_details = {}
 class Client:
 
     PRIVY_APP_ID = 'clpgf04wn04hnkw0fv1m11mnb'
-    PRIVY_CLIENT = 'react-auth:1.75.0-beta-20240715213704'
+    PRIVY_CLIENT = 'react-auth:1.78.0'
+    PRIVY_CLIENT_ID = 'client-WY2f8mnC65aGnM2LmXpwBU5GqK3kxYqJoV7pSNRJLWrp6'
 
     def __init__(self, private_key, proxy):
         if proxy is not None and len(proxy) > 4 and proxy[:4] != 'http':
@@ -62,6 +63,7 @@ class Client:
             'privy-app-id': self.PRIVY_APP_ID,
             'privy-ca-id': self.privy_ca_id,
             'privy-client': self.PRIVY_CLIENT,
+            'privy-client-id': self.PRIVY_CLIENT_ID,
             'accept': 'application/json',
             'sec-fetch-site': 'same-site',
             'referer': 'https://zora.co/',
@@ -86,7 +88,7 @@ class Client:
         nonce = self.get_nonce()
         issued_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
 
-        time.sleep(random.uniform(2, 5))
+        time.sleep(random.uniform(4, 6))
 
         msg = f'zora.co wants you to sign in with your Ethereum account:\n' \
               f'{self.address}\n\n' \
