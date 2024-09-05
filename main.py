@@ -711,18 +711,21 @@ class Runner(Client):
 
         if get_chain(w3) in ['Zora', 'Base'] and newer_version:
             strategy = w3.eth.contract(TIMED_SALE_STRATEGY_ADDRESS, abi=TIMED_SALE_STRATEGY_ABI)
-            sale_config = strategy.functions.saleV2(nft_address, token_id).call()
-            is_timed_sale, start_time, end_time = True, sale_config[0], sale_config[2]
-            if sale_config[-3] == ZERO_ADDRESS:
-                sale_config = strategy.functions.sale(nft_address, token_id).call()
-                if sale_config[0] == ZERO_ADDRESS:
-                    is_timed_sale = False
-                else:
-                    start_time, end_time = sale_config[1], sale_config[3]
-            if is_timed_sale:
-                if (st := self.check_sale_config([start_time, end_time, 0], balance)) is not None:
-                    return st, None
-                return self._mint_timed_sale(w3, nft_address, token_id, strategy, simulate)
+            try:
+                sale_config = strategy.functions.saleV2(nft_address, token_id).call()
+                is_timed_sale, start_time, end_time = True, sale_config[0], sale_config[2]
+                if sale_config[-3] == ZERO_ADDRESS:
+                    sale_config = strategy.functions.sale(nft_address, token_id).call()
+                    if sale_config[0] == ZERO_ADDRESS:
+                        is_timed_sale = False
+                    else:
+                        start_time, end_time = sale_config[1], sale_config[3]
+                if is_timed_sale:
+                    if (st := self.check_sale_config([start_time, end_time, 0], balance)) is not None:
+                        return st, None
+                    return self._mint_timed_sale(w3, nft_address, token_id, strategy, simulate)
+            except:
+                pass
 
         if get_chain(w3) == 'Zora' and not simulate and (with_rewards or newer_version):
             erc20_minter = w3.eth.contract(ERC20_MINTER, abi=ERC20_MINTER_ABI)
@@ -1709,7 +1712,11 @@ class Runner(Client):
         logger.print(f'{balance} NFTs in wallet')
         amount_to_sell = round(balance * SALE_AMOUNT_PERCENT / 100)
 
-        sale_config = strategy.functions.saleV2(nft_address, token_id).call()
+        try:
+            sale_config = strategy.functions.saleV2(nft_address, token_id).call()
+        except:
+            logger.print('NFT is not available for secondary market')
+            return
         nft_token_address, end_time = sale_config[-3], sale_config[2]
         if nft_token_address == ZERO_ADDRESS:
             sale_config = strategy.functions.sale(nft_address, token_id).call()
@@ -1901,11 +1908,14 @@ def main():
             erc20_token = nft_sale_config[-1]
             is_erc20_nft = erc20_token != ZERO_ADDRESS
             if not is_erc20_nft:
-                nft_sale_config = common_timed_sale.functions.saleV2(
-                    nft_collection_address,
-                    _nft_to_mint[2]
-                ).call()
-                is_sparks_nft = nft_sale_config[-3] != ZERO_ADDRESS
+                try:
+                    nft_sale_config = common_timed_sale.functions.saleV2(
+                        nft_collection_address,
+                        _nft_to_mint[2]
+                    ).call()
+                    is_sparks_nft = nft_sale_config[-3] != ZERO_ADDRESS
+                except:
+                    is_sparks_nft = False
         if is_sparks_nft:
             sparks_mints += mint[1][0] if MINT_BY_NFTS else 1
         elif is_erc20_nft:
