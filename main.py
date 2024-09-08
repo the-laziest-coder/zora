@@ -932,7 +932,7 @@ class Runner(Client):
             raise e
 
     def mint(self, nft):
-        return self.zora_action_wrapper(self._mint, nft, is_mint=True)
+        return self.zora_action_wrapper(self._mint, nft, is_mint=True, need_auth=False)
 
     def check_nft_contract_version(self, w3, contract):
         version = contract.functions.contractVersion().call()
