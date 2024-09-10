@@ -874,7 +874,7 @@ class Runner(Client):
 
         return status
 
-    def zora_action_wrapper(self, func, *args, is_mint=False, need_auth=True):
+    def zora_action_wrapper(self, func, *args, is_mint=False, need_auth=DO_LOGIN):
 
         if need_auth:
             self.ensure_authorized()
@@ -932,7 +932,7 @@ class Runner(Client):
             raise e
 
     def mint(self, nft):
-        return self.zora_action_wrapper(self._mint, nft, is_mint=True, need_auth=False)
+        return self.zora_action_wrapper(self._mint, nft, is_mint=True)
 
     def check_nft_contract_version(self, w3, contract):
         version = contract.functions.contractVersion().call()

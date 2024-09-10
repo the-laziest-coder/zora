@@ -94,6 +94,9 @@ FULL_SHUFFLE = False
 # Требования: MINT_ALREADY_CREATED_PERCENT = 0
 MINT_BY_NFTS = False
 
+# Логиниться при каждом действии, можно отключить, но AI генерация изображений работать не будет
+DO_LOGIN = False
+
 # Список NFT для продажи, только который минтились за ✧111
 # Формат: (contract address, token id)
 SALE_NFTS = [
