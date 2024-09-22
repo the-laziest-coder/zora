@@ -1266,7 +1266,8 @@ class Runner(Client):
 
     @runner_func('Get created collection')
     def get_created_zora_collections(self, timestamp_from=None):
-        self.ensure_authorized()
+        if DO_LOGIN:
+            self.ensure_authorized()
         resp_raw = self.sess.get(f'https://zora.co/api/user/{self.address.lower()}/admin'
                                  f'?chainId=1,7777777,10,8453,42161'
                                  f'&direction=desc'
