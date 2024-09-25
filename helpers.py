@@ -82,6 +82,7 @@ def construct_mint_link(chain, address, token_id=None):
     created_link += address.lower()
     if token_id is not None:
         created_link += '/' + str(token_id)
+    return created_link
 
 
 def get_random_words(n: int):
