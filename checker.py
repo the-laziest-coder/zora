@@ -10,6 +10,7 @@ from web3 import AsyncWeb3
 from pathlib import Path
 from eth_account import Account
 from termcolor import cprint
+from tabulate import tabulate
 
 import config
 from vars import NATIVE_DECIMALS
@@ -71,9 +72,30 @@ class ZoraScan:
                 nfts = sum(len(r['tokens']) if r['contractStandard'] == 'ERC1155' else 1 for r in resp)
                 return collections, nfts
 
+    async def get_swap_data(self, w3):
+        async with aiohttp.ClientSession() as sess:
+            volume = 0
+            async with sess.get(f'https://explorer.zora.energy/api/v2/addresses/{self.address}/transactions',
+                                proxy=self.proxy) as resp_raw:
+                resp = await resp_raw.json()
+                for item in resp['items']:
+                    if item['to']['hash'].lower() != '0x2986d9721A49838ab4297b695858aF7F17f38014'.lower():
+                        continue
+                    tx_hash = item['hash']
+                    receipt = await w3.eth.get_transaction_receipt(tx_hash)
+                    for log in receipt['logs']:
+                        if len(log.get('topics', [])) == 0:
+                            continue
+                        if log['topics'][0].hex() != '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef':
+                            continue
+                        if log['address'] != '0x4200000000000000000000000000000000000006':
+                            continue
+                        volume += int(log['data'].hex(), 16) / 10 ** 18
+            return '%.3f' % volume
+
     async def get_data(self):
         logger.info(f'{self.idx}) Processing {self.address}')
-        data = [None] * 10
+        data = [None] * 7
 
         try:
             req_args = {} if self.proxy is None or self.proxy == '' else {
@@ -89,14 +111,18 @@ class ZoraScan:
             logger.error(f'{self.idx}) Failed to get chain data: {str(e)}')
 
         try:
+            data[2] = await self.get_swap_data(w3)
+        except Exception as e:
+            logger.error(f'{self.idx}) Failed to get swap data: {e}')
+
+        try:
             unique_erc721, unique_erc1155, erc721, erc1155 = await self.get_minted_data()
-            data[2], data[3], data[4] = erc721 + erc1155, erc721, erc1155
-            data[5], data[6], data[7] = unique_erc721 + unique_erc1155, unique_erc721, unique_erc1155
+            data[3], data[4] = erc1155, unique_erc1155
         except Exception as e:
             logger.error(f'{self.idx}) Failed to get nft data: {str(e)}')
 
         try:
-            data[8], data[9] = await self.get_created_data()
+            data[5], data[6] = await self.get_created_data()
         except Exception as e:
             logger.error(f'{self.idx}) Failed to get created data: {e}')
 
@@ -142,20 +168,23 @@ def main():
 
     loop.run_until_complete(fill_data(list(enumerate(list(zip(wallets, proxies)), start=1))))
 
-    csv_data = [['Address', 'Balance', 'Tx Count',
-                 'Total NFT', 'ERC-721', 'ERC-1155',
-                 'Unique Total NFT', 'Unique ERC-721', 'Unique ERC-1155',
+    csv_data = [['#', 'Address', 'Balance', 'Tx Count', 'Swap Volume',
+                 'Total NFT', 'Unique NFT',
                  'Created Collections', 'Created NFTs']]
-    for w in wallets:
+    for idx, w in enumerate(wallets, start=1):
         address = ZoraScan(None, w, None).address
-        csv_data.append([address] + list(wallets_data[address]))
+        csv_data.append([idx, address] + list(wallets_data[address]))
 
     with open(f'{results_path}/stats.csv', 'w') as file:
         writer = csv.writer(file)
         writer.writerows(csv_data)
 
     print()
-    logger.success(f'Stats saves in {results_path}/stats.csv')
+
+    print(tabulate(csv_data, headers='firstrow', tablefmt='fancy_grid'))
+
+    print()
+    logger.success(f'Stats saves in {results_path}/stats.csv\n')
 
 
 if __name__ == '__main__':
