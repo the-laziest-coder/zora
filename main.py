@@ -1143,7 +1143,7 @@ class Runner(Client):
             )
         else:
             market_countdown = 86400
-            min_market_eth = self.TIMED_SALE_PRICE * 20
+            min_market_eth = int(self.TIMED_SALE_PRICE * 1111 // 10)
             set_sale_data = self._get_calldata(
                 'setSaleV2(uint256,(uint64,uint64,uint256,string,string))',
                 [next_token_id, (sale_start_time, market_countdown, min_market_eth, name, ticker)],
@@ -1629,6 +1629,7 @@ class Runner(Client):
             rounds = TOKENS_ROUNDS[token_in]
             amount_in = round(amount_in, random.randint(rounds[0], rounds[1]))
             amount_in = decimal_to_int(amount_in, decimals)
+            amount_in = min(amount_in, balance)
             break
         if token_in is None:
             if SWAP_ONLY_TO_ETH or only_to_eth:
