@@ -573,8 +573,8 @@ class Runner(Client):
 
     def _mint_timed_sale(self, w3, nft_address, token_id, strategy, simulate):
         comment = generate_comment()
-        args = (self.address, 1, nft_address, token_id, Web3.to_checksum_address(MINT_REF_ADDRESS if REF == '' else REF), comment)
-        value = self.TIMED_SALE_PRICE
+        args = (self.address, MINT_CNT, nft_address, token_id, Web3.to_checksum_address(MINT_REF_ADDRESS if REF == '' else REF), comment)
+        value = self.TIMED_SALE_PRICE * MINT_CNT
         tx_hash_or_data = self.build_and_send_tx(w3, strategy.functions.mint(*args), 'Mint timed sale', value=value, simulate=simulate)
         return Status.SUCCESS, tx_hash_or_data
 
