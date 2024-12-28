@@ -1824,14 +1824,26 @@ def get_all_created(address, proxy, with_is_erc20_info=False):
             nft_chain = CHAIN_NAMES[created['chainId']]
             if created['contractStandard'] == 'ERC721':
                 continue
-            else:
-                created_mints.extend([((nft_chain, created['address'], token_id),
-                                       'erc20Minter' in token['salesStrategy']) if with_is_erc20_info
-                                      else (nft_chain, created['address'], token_id)
-                                      for token_id, token in enumerate(created['tokens'], start=1)])
+            version = created['contractVersion']
+            if cmp_versions(version, '2.12') < 0:
+                continue
+            created_mints.extend([((nft_chain, created['address'], token_id),
+                                   'erc20Minter' in token['salesStrategy']) if with_is_erc20_info
+                                  else (nft_chain, created['address'], token_id)
+                                  for token_id, token in enumerate(created['tokens'], start=1)])
         return created_mints
     except Exception as e:
         raise Exception(f'status_code = {resp_raw.status_code}, response = {resp_raw.text}: {str(e)}')
+
+
+def cmp_versions(v1, v2):
+    from itertools import zip_longest
+    def normalize(v):
+        return [int(x) for x in v.split('.')]
+    for a, b in zip_longest(normalize(v1), normalize(v2), fillvalue=0):
+        if a != b:
+            return 1 if a > b else -1
+    return 0
 
 
 def main():
