@@ -1,2 +1,0 @@
-address1;private_key1 or private_key1
-address2;private_key2 or private_key2

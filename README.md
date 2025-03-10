@@ -1,45 +1,39 @@
-# Zora Ultimate Soft
+# Zora CLI Tool
 
- - [Bridge from Ethereum to Zora](https://bridge.zora.energy/)
- - Instant Bridge from Arbitrum, Optimism, Base
- - Auto OKX withdraw
- - Mint any NFT from your own list
- - Mint with ERC-20 tokens
- - Mint from other chain
- - Earn mint.fun points
- - Create ERC1155 collections (incl. for ERC-20 tokens)
- - Create NFT in existed ERC1155 collection
- - Update collections and NFT metadata
- - Link email and create Zora account
- - Claim rewards
- - Check wallets stats
- - Personalize profiles
- - Swaps on Uniswap
- - Buy prepaid mints
- - AI generation for images
+ - Create coins
+ - Buy coins
+ - Sell coins
+ - Follows
 
 ### Follow: https://t.me/thelaziestcoder
 
 ### Settings
-`files/wallets.txt` - Wallets with private keys \
+`files/evm_wallets.txt` - Wallets with private keys \
 `files/proxies.txt` - Corresponding proxies for wallets \
 `files/emails.txt` - Corresponding emails for wallets \
-`config.py` - Custom settings \
-`vars.py` - Contracts info 
+`files/twitters.txt` - Corresponding twitters for wallets \
+`config.toml` - Custom settings
 
 ### Run
 
-Installing all dependencies: \
-`pip3 install -r requirements.txt`
+Python version: 3.12
 
-Run main script: \
-`python3 main.py`
+Installing virtual env: \
+`python3 -m venv venv`
 
-Link email to Zora account: \
-`python3 set_email.py`
+Activating:
+ - Mac/Linux - `source venv/bin/activate`
+ - Windows - `.\venv\Scripts\activate`
 
-Check wallets stats: \
-`python3 checker.py`
+Installing all dependencies:
+ - Mac/Linux - `pip install -r requirements.txt`
+ - Windows - `pip install -r requirements.windows.txt`
+
+Rename files and paste your data: \
+`example.evm_keys.txt -> evm_keys.txt` \
+`example.proxies.txt -> proxies.txt` \
+`example.twitters.txt -> twitters.txt` \
+`example.emails.txt -> emails.txt`
 
 ### Results
 
@@ -48,5 +42,4 @@ Check wallets stats: \
 
 ### Donate :)
 
-TRC-20 - `TX7yeJVHwhNsNy4ksF1pFRFnunF1aFRmet` \
-ERC-20 - `0x5aa3c82045f944f5afa477d3a1d0be3c96196319`
+EVM - `0x792DaB09c60f12e936b96cf95C02edc93f063713`

@@ -1,0 +1,51 @@
+# Кол-во потоков
+THREADS_NUM = 1
+# Задержка между аккаунтами внутри одного потока в минутах
+WAIT_BETWEEN_ACCOUNTS = [0, 0]
+MAX_TRIES = 3
+
+DISABLE_SSL = false
+
+# Можно указать какие номера акков запускать, а ен все указанные в files/
+WANT_ONLY = []
+SKIP_FIRST_ACCOUNTS = 0
+RANDOM_ORDER = false
+
+# Вывести только статистику акков (и сохранить в .csv) без запуска действий
+ONLY_CHECK_STATS = false
+
+# На сколько ETH покупать
+BUY_AMOUNT = [0.0005, 0.001]
+# Какой процент от баланса продавать
+SELL_PERCENT = [50, 80]
+# Продавать если имеющиеся токены оценивается больше чем на это кол-во ETH
+SELL_IF_BALANCE_VALUE_GREATER_THAN = 0.0005
+# Покупка из Top Today, максимум рандомный из топ-20, можно указать "меньший" топ
+MAX_TOP = 20
+
+# Создавать/дополнять профиль: почта, твиттер, аватарка
+SETUP_PROFILE = true
+# Сохранять все созданные койны в results/created.csv
+STORE_CREATED = true
+
+# Задержка между действиями одного акка в секундах
+DELAY_BETWEEN_ACTIONS = [10, 20]
+
+[ACTIONS]
+# Кол-во покупок из files/coints.txt
+BUY_LINKS = [1, 1]
+# Кол-во покупок из топа
+BUY_TOP = [1, 1]
+# Кол-во продаж
+SELLS = [1, 1]
+# Кол-во созданий
+CREATES = [1, 1]
+# Кол-во рандомных подписок из рекомендаций
+FOLLOW = [1, 1]
+
+[RPCs]
+Ethereum = 'https://rpc.ankr.com/eth'
+Optimism = 'https://mainnet.optimism.io'
+Arbitrum = 'https://arb1.arbitrum.io/rpc'
+Base = 'https://mainnet.base.org'
+Zora = 'https://rpc.zora.energy'

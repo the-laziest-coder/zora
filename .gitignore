@@ -3,3 +3,25 @@
 .DS_Store
 
 /__pycache__
+/*/__pycache__
+/*/*/__pycache__
+/*/*/*/__pycache__
+
+/venv
+
+/files/emails.txt
+/files/evm_keys.txt
+/files/proxies.txt
+/files/twitters.txt
+
+/storage/*
+!/storage/.gitkeep
+
+/.backup/*
+!/.backup/.gitkeep
+
+/results/*
+!/results/.gitkeep
+
+/logs/*
+!/logs/.gitkeep
