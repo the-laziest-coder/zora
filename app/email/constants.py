@@ -3,7 +3,10 @@ IMAP_SERVERS = {
     'hotmail.com': 'imap-mail.outlook.com',
     'rambler.ru': 'imap.rambler.ru',
     'mail.ru': 'imap.mail.ru',
+    'gmx.com': 'imap.gmx.com',
 }
+
+IMAP_FIRST_MAIL = 'imap.firstmail.ltd'
 
 FOLDERS = ['INBOX', 'JUNK']
 

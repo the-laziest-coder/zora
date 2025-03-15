@@ -8,7 +8,7 @@ from aioimaplib import aioimaplib
 from ..models import AccountInfo
 
 from .base import BaseClient
-from .constants import IMAP_SERVERS
+from .constants import IMAP_SERVERS, IMAP_FIRST_MAIL
 
 
 class IMAPClient(BaseClient):
@@ -29,8 +29,10 @@ class IMAPClient(BaseClient):
 
     async def _login(self):
         email_domain = self.account.email_username.split('@')[1]
-        if email_domain not in IMAP_SERVERS:
-            raise Exception(f'Imap server for {email_domain} not found. Add it in internal/email/constants.py')
+        imap_server = IMAP_SERVERS.get(email_domain)
+        if imap_server:
+            logger.info(f'{self.account.idx}) Imap server for {email_domain} not found. '
+                        f'Will use firstmail server. You can add new server in app/email/constants.py')
         self.imap = aioimaplib.IMAP4_SSL(IMAP_SERVERS[email_domain])
         await self.imap.wait_hello_from_server()
         await self.imap.login(self.account.email_username, self.account.email_password)
