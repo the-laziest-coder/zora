@@ -84,14 +84,32 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str]],
                     f'\t{sells} sells\n'
                     f'\t{creates} creates\n'
                     f'\t{follows} follows\n')
+
         actions = (
             ['buy_link'] * buy_links +
             ['buy_top'] * buy_top +
-            ['sell'] * sells +
             ['follow'] * follows +
             ['create'] * creates
         )
         random.shuffle(actions)
+
+        i, sells_left = 0, sells
+        while i < len(actions) and sells_left > 0:
+            i += 1
+            if actions[i - 1] not in ('buy_link', 'buy_top'):
+                continue
+            sell_index = random.randint(i, len(actions))
+            actions.insert(sell_index, 'sell')
+            sells_left -= 1
+        if sells_left > 0:
+            last_buy_index = -1
+            for i, a in enumerate(actions):
+                if a in ('buy_link', 'buy_top'):
+                    last_buy_index = i
+            for _ in range(sells_left):
+                sell_index = random.randint(last_buy_index + 1, len(actions))
+                actions.insert(sell_index, 'sell')
+
         async with Zora(account_info) as zora:
             if SETUP_PROFILE:
                 try:
@@ -155,16 +173,19 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str]],
 async def process_batch(bid: int, batch, storage: AccountStorage, async_func, sleep):
     if len(batch) == 0:
         return []
-    if sleep:
-        avg_delay = sum(WAIT_BETWEEN_ACCOUNTS) / 2 * 60
-        avg_delay = random.uniform(avg_delay * 0.8, avg_delay * 1.2)
-        await asyncio.sleep(avg_delay / THREADS_NUM * bid)
     failed = []
     for idx, d in enumerate(batch):
-        if sleep and idx != 0:
-            await asyncio.sleep(random.uniform(*WAIT_BETWEEN_ACCOUNTS) * 60)
-        logger.info(f'Starting {idx + 1}{dict({1: "st", 2: "nd", 3: "rd"}).get(idx + 1, "th")} '
-                    f'account in thread#{bid + 1}')
+        human = dict({1: "st", 2: "nd", 3: "rd"}).get(idx + 1, "th")
+        if sleep:
+            if idx == 0:
+                delay = sum(WAIT_BETWEEN_ACCOUNTS) / 2 * 60
+                delay = random.uniform(delay * 0.8, delay * 1.2)
+                delay = delay / THREADS_NUM * bid
+            else:
+                delay = random.uniform(*WAIT_BETWEEN_ACCOUNTS) * 60
+            logger.info(f'Waiting {round(delay)}s before {idx + 1}{human} account in thread#{bid + 1}')
+            await asyncio.sleep(delay)
+        logger.info(f'Starting {idx + 1}{human} account in thread#{bid + 1}')
         try:
             await async_func(d, storage)
         except Exception as e:
