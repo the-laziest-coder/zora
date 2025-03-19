@@ -484,6 +484,23 @@ class Client:
         except Exception as e:
             raise Exception(f'Check username available failed: {e}') from e
 
+    async def change_username(self, username: str):
+        await self.ensure_authorized()
+        try:
+            p_username = await self.tls.post(
+                'https://zora.co/api/trpc/account.changeUsername',
+                [200], lambda r: r['result']['data']['json']['username'],
+                json={'json': username},
+                headers={
+                    'referrer': 'https://zora.co/settings',
+                    **self._non_bearer_headers(),
+                }
+            )
+            if p_username != username:
+                raise Exception('Was not set')
+        except Exception as e:
+            raise Exception(f'Change username failed: {e}') from e
+
     @async_retry
     async def ipfs_upload(self, name: str, content: bytes, content_type: str = 'image/png') -> str:
         await self.ensure_authorized(refresh=True)

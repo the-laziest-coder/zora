@@ -242,6 +242,14 @@ class Zora:
         await self.client.create_account(username, avatar)
         logger.success(f'{self.idx}) Created account with username {username}')
 
+    async def update_username(self):
+        logger.info(f'{self.idx}) Updating username')
+        username = await fake_username()
+        while not await self.client.is_username_available(username):
+            username = await fake_username()
+        await self.client.change_username(username)
+        logger.success(f'{self.idx}) Updated username: {username}')
+
     async def setup_avatar(self, username: str):
         logger.info(f'{self.idx}) Adding avatar')
         avatar = await self._get_ipfs_avatar()
@@ -309,9 +317,17 @@ class Zora:
             account = await self.client.get_my_account()
             await self.link_twitter(on_creating=True)
             await wait_a_bit(3)
+        if account.get('username', '').lower() == self.account.evm_address.lower():
+            await wait_a_bit(3)
+            await self.update_username()
+            await wait_a_bit(10)
+            account = await self.client.get_my_account()
         profile = await self.client.get_my_profile()
         if not profile.get('avatarUri'):
-            await self.setup_avatar(profile['displayName'])
+            display_name = profile.get('displayName')
+            if display_name is None:
+                display_name = account['username']
+            await self.setup_avatar(display_name)
             profile = await self.client.get_my_profile()
         if profile.get('socialAccounts', {}).get('twitter') is None:
             await self.link_twitter()
