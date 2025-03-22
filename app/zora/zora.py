@@ -317,12 +317,14 @@ class Zora:
             account = await self.client.get_my_account()
             await self.link_twitter(on_creating=True)
             await wait_a_bit(3)
+        print('Account', account)
         if account.get('username', '').lower() == self.account.evm_address.lower():
             await wait_a_bit(3)
             await self.update_username()
             await wait_a_bit(10)
             account = await self.client.get_my_account()
         profile = await self.client.get_my_profile()
+        print('Profile', profile)
         if not profile.get('avatarUri'):
             display_name = profile.get('displayName')
             if display_name is None:
