@@ -7,6 +7,45 @@ from typing import Optional
 from ..models import AccountInfo
 
 
+class CompactJSONEncoder(json.JSONEncoder):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.indentation_level = 0
+
+    def encode(self, o):
+
+        if self._is_simple_dict(o):
+            return '{' + ', '.join(f"{json.dumps(k)}: {self.encode(v)}" for k, v in o.items()) + '}'
+
+        elif isinstance(o, (list, tuple)):
+            return "[" + ", ".join(json.dumps(el) for el in o) + "]"
+
+        elif isinstance(o, dict):
+            self.indentation_level += 1
+            output = [self.indent_str + f"{json.dumps(k)}: {self.encode(v)}" for k, v in o.items()]
+            self.indentation_level -= 1
+            return "{\n" + ",\n".join(output) + "\n" + self.indent_str + "}"
+
+        else:
+            return json.dumps(o)
+
+    @classmethod
+    def _is_simple_dict(cls, o) -> bool:
+        if not isinstance(o, dict):
+            return False
+        return (len(o) <= 3
+                and not any(isinstance(v, (list, tuple, dict)) for v in o.values())
+                and len(str(o)) < 62)
+
+    @property
+    def indent_str(self) -> str:
+        return " " * self.indentation_level * (self.indent if self.indent else 0)
+
+    def iterencode(self, o, **kwargs):
+        return self.encode(o)
+
+
 class Storage:
 
     def __init__(self, filename: str):
@@ -58,33 +97,9 @@ class Storage:
         self._save(self.data)
 
     def _save(self, converted_data):
-        js_dump = self._transform(converted_data)
+        js_dump = json.dumps(converted_data, indent=2, cls=CompactJSONEncoder)
         with open(self.filename, 'w', encoding='utf-8') as file:
             file.write(js_dump)
-
-    @classmethod
-    def _transform(cls, json_obj, indent=2):
-        def inner_transform(o):
-            if isinstance(o, list) or isinstance(o, tuple):
-                for v in o:
-                    if isinstance(v, dict):
-                        return [inner_transform(v) for v in o]
-                return "#!#<{}>#!#".format(json.dumps(o))
-            elif isinstance(o, dict):
-                return {k: inner_transform(v) for k, v in o.items()}
-            return o
-
-        if isinstance(json_obj, dict):
-            transformed = {k: inner_transform(v) for k, v in json_obj.items()}
-        elif isinstance(json_obj, list) or isinstance(json_obj, tuple):
-            transformed = [inner_transform(v) for v in json_obj]
-        else:
-            transformed = inner_transform(json_obj)
-
-        transformed_json = json.dumps(transformed, indent=indent)
-        transformed_json = transformed_json.replace('"#!#<', "").replace('>#!#"', "").replace('\\"', "\"")
-
-        return transformed_json
 
 
 class AccountStorage(Storage):
