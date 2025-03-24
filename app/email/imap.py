@@ -30,10 +30,11 @@ class IMAPClient(BaseClient):
     async def _login(self):
         email_domain = self.account.email_username.split('@')[1]
         imap_server = IMAP_SERVERS.get(email_domain)
-        if imap_server:
+        if imap_server is None:
             logger.info(f'{self.account.idx}) Imap server for {email_domain} not found. '
                         f'Will use firstmail server. You can add new server in app/email/constants.py')
-        self.imap = aioimaplib.IMAP4_SSL(IMAP_SERVERS[email_domain])
+            imap_server = IMAP_FIRST_MAIL
+        self.imap = aioimaplib.IMAP4_SSL(imap_server)
         await self.imap.wait_hello_from_server()
         await self.imap.login(self.account.email_username, self.account.email_password)
         await self.imap.select()
