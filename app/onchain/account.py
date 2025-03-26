@@ -7,7 +7,7 @@ from web3.middleware import async_geth_poa_middleware
 from web3.contract.async_contract import AsyncContractConstructor, AsyncContract
 
 from ..models import AccountInfo
-from ..utils import async_retry, get_proxy_url, get_w3, wait_a_bit
+from ..utils import async_retry, get_proxy_url, get_w3, wait_a_bit, to_bytes
 from ..config import RPCs
 
 from .constants import SCANS, EIP1559_CHAINS
@@ -33,6 +33,66 @@ class EVM:
         await self.close()
 
     @async_retry
+    async def _send_tx(self, tx):
+        if 'chainId' not in tx:
+            tx['chainId'] = await self.w3.eth.chain_id
+        if 'from' not in tx:
+            tx['from'] = self.account.evm_address
+        if 'nonce' not in tx:
+            tx['nonce'] = await self.w3.eth.get_transaction_count(self.account.evm_address)
+        if 'to' not in tx:
+            raise Exception('"to" should be specified in raw tx')
+
+        tx['from'] = Web3.to_checksum_address(tx['from'])
+        tx['to'] = Web3.to_checksum_address(tx['to'])
+
+        if 'gasLimit' in tx:
+            tx['gas'] = tx['gasLimit']
+            del tx['gasLimit']
+        if type(tx.get('gas')) is str:
+            tx['gas'] = int(tx['gas'])
+
+        if self.chain in EIP1559_CHAINS:
+            if 'gasPrice' in tx:
+                del tx['gasPrice']
+            if 'maxPriorityFeePerGas' not in tx or 'maxFeePerGas' not in tx:
+                max_priority_fee = await self.w3.eth.max_priority_fee
+                max_priority_fee = int(max_priority_fee * 2)
+                base_fee_per_gas = int((await self.w3.eth.get_block("latest"))["baseFeePerGas"])
+                max_fee_per_gas = max_priority_fee + int(base_fee_per_gas * 2)
+                tx.update({
+                    'maxPriorityFeePerGas': max_priority_fee,
+                    'maxFeePerGas': max_fee_per_gas,
+                })
+        else:
+            if 'gasPrice' not in tx:
+                tx['gasPrice'] = await self.w3.eth.gas_price
+        if type(tx.get('gasPrice')) is str:
+            value = tx['gasPrice']
+            tx['gasPrice'] = int(value, 16) if value.startswith('0x') else int(value)
+        if type(tx.get('maxPriorityFeePerGas')) is str:
+            tx['maxPriorityFeePerGas'] = int(tx['maxPriorityFeePerGas'])
+        if type(tx.get('maxFeePerGas')) is str:
+            tx['maxFeePerGas'] = int(tx['maxFeePerGas'])
+
+        if type(tx.get('value')) is str:
+            value = tx['value']
+            tx['value'] = int(value, 16) if value.startswith('0x') else int(value)
+        if type(tx.get('data')) is str:
+            tx['data'] = to_bytes(tx['data'])
+
+        try:
+            estimate = await self.w3.eth.estimate_gas(tx)
+            if 'gas' not in tx:
+                tx['gas'] = int(estimate * 1.2)
+        except Exception as e:
+            raise Exception(f'Tx simulation failed: {str(e)}')
+
+        signed_tx = self.w3.eth.account.sign_transaction(tx, self.private_key)
+        tx_hash = await self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        return tx_hash
+
+    @async_retry
     async def _build_and_send_tx(self, func: AsyncContractConstructor, **tx_vars):
         if self.chain in EIP1559_CHAINS:
             max_priority_fee = await self.w3.eth.max_priority_fee
@@ -45,9 +105,12 @@ class EVM:
         tx = await func.build_transaction({
             'from': self.account.evm_address,
             'nonce': await self.w3.eth.get_transaction_count(self.account.evm_address),
+            'gas': 0,
             **gas_vars,
             **tx_vars,
         })
+        if 'no_send' in tx_vars:
+            return tx
         try:
             estimate = await self.w3.eth.estimate_gas(tx)
             tx['gas'] = int(estimate * 1.2)
@@ -83,23 +146,28 @@ class EVM:
         logger.warning(f'{self.idx}) {msg}')
         raise Exception(msg)
 
-    async def _default_send_wrapper(self, send_func, *args, action='', **kwargs) -> str:
+    async def _default_send_wrapper(self, send_func, *args, action='', **kwargs) -> str | dict:
         try:
-            tx_hash = await send_func(*args, **kwargs)
+            tx_or_hash = await send_func(*args, **kwargs)
         except Exception as e:
             try:
                 if 'you are connected to a POA chain' in str(e):
                     self.w3.middleware_onion.inject(async_geth_poa_middleware, layer=0)
-                    tx_hash = await send_func(*args, **kwargs)
+                    tx_or_hash = await send_func(*args, **kwargs)
                 else:
                     raise e
             except Exception as inner_exc:
                 raise Exception(f'{action} failed: {inner_exc}')
-        await self.tx_verification(tx_hash, action)
-        return tx_hash.hex()
+        if type(tx_or_hash) is dict:
+            return tx_or_hash
+        await self.tx_verification(tx_or_hash, action)
+        return tx_or_hash.hex()
 
-    async def build_and_send_tx(self, func: AsyncContractConstructor, action='', **tx_vars) -> str:
+    async def build_and_send_tx(self, func: AsyncContractConstructor, action='', **tx_vars) -> str | dict:
         return await self._default_send_wrapper(self._build_and_send_tx, func, action=action, **tx_vars)
+
+    async def send_tx(self, tx: dict, action='') -> str:
+        return await self._default_send_wrapper(self._send_tx, tx, action=action)
 
     async def balance(self) -> int:
         return await self.w3.eth.get_balance(self.account.evm_address)

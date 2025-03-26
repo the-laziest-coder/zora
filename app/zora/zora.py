@@ -7,7 +7,7 @@ from web3 import Web3
 import eth_abi
 
 
-from ..config import BUY_AMOUNT, MAX_TOP, SELL_PERCENT, SELL_IF_BALANCE_VALUE_GREATER_THAN
+from ..config import BUY_AMOUNT, BUY_FROM_ZORA_CHANCE, MAX_TOP, SELL_PERCENT, SELL_IF_BALANCE_VALUE_GREATER_THAN
 from ..email import Email
 from ..models import AccountInfo
 from ..onchain import EVM, CHAIN_IDS, ZERO_ADDRESS, CHAIN_NAMES, SCANS
@@ -83,6 +83,52 @@ class Zora:
     async def __aexit__(self, *args):
         await self.close()
 
+    async def _relay_tx(self, tx: dict, src_chain_id: int, dst_chain_id: int, action: str = ''):
+        action = f'Relay tx {CHAIN_NAMES[src_chain_id]} -> {CHAIN_NAMES[dst_chain_id]} "{action}"'
+        logger.info(f'{self.idx}) {action}')
+        tls = TLSClient(self.account, {
+            'origin': 'https://zora.co',
+            'priority': 'u=1, i',
+            'referer': 'https://zora.co/',
+            'sec-fetch-site': 'cross-site',
+        })
+        try:
+            relay_tx = {
+                'data': tx['data'],
+                'to': tx['to'].lower(),
+                'value': tx['value']
+            }
+            if type(relay_tx['data']) is bytes:
+                relay_tx['data'] = '0x' + relay_tx['data'].hex()
+            if type(relay_tx['value']) is not str:
+                relay_tx['value'] = str(relay_tx['value'])
+            body = {
+                'amount': relay_tx['value'],
+                'destinationChainId': dst_chain_id,
+                'destinationCurrency': ZERO_ADDRESS,
+                'originChainId': src_chain_id,
+                'originCurrency': ZERO_ADDRESS,
+                'recipient': self.account.evm_address,
+                'referrer': 'https://zora.co',
+                'tradeType': 'EXACT_OUTPUT',
+                'txs': [relay_tx],
+                'user': self.account.evm_address,
+            }
+            steps = await tls.post('https://api.relay.link/quote', [200], lambda r: r['steps'], json=body)
+            if len(steps) != 1:
+                raise Exception(f'tx with {len(steps)} steps not supported')
+            items = steps[0]['items']
+            if len(items) != 1:
+                raise Exception(f'tx with {len(items)} items not supported')
+            bridge_tx = items[0]['data']
+        except Exception as e:
+            raise Exception(f'{action}: {e}') from e
+        finally:
+            await tls.close()
+
+        async with EVM(self.account, CHAIN_NAMES[src_chain_id]) as evm:
+            await evm.send_tx(bridge_tx, action)
+
     async def buy(self, coin: ZoraCoin):
         chain_id = CHAIN_IDS[coin.chain]
         info = await self.client.get_coin_info(chain_id, coin.address)
@@ -108,12 +154,35 @@ class Zora:
         referrer = coin.referrer
         referrer = referrer if referrer else ZERO_ADDRESS
 
+        action = f'Buying at least {human_i2d(min_amount_out)} ${info["coinName"]} for {human_i2d(amount)} ETH'
+
+        chains = []
+        async with EVM(self.account, coin.chain) as evm:
+            balance = await evm.balance()
+            if amount + decimal_to_int(0.0001) <= balance:
+                chains.append(coin.chain)
+        async with EVM(self.account, 'Zora') as evm:
+            balance = await evm.balance()
+            if int(amount * 1.01) + decimal_to_int(0.0001) <= balance:
+                chains.append('Zora')
+
+        if not chains:
+            raise Exception(f'No balance on both {coin.chain} and Zora')
+
+        if 'Zora' in chains and (len(chains) == 1 or random.uniform(0, 100) <= BUY_FROM_ZORA_CHANCE):
+            buy_chain = 'Zora'
+        else:
+            buy_chain = coin.chain
+
         async with EVM(self.account, coin.chain) as evm:
             contract = evm.contract(
                 coin.address,
                 'buy(address,uint256,uint256,uint160,address)',
             )
-            await evm.build_and_send_tx(
+            tx_vars = {'value': amount}
+            if buy_chain != coin.chain:
+                tx_vars['no_send'] = True
+            tx = await evm.build_and_send_tx(
                 contract.functions.buy(
                     self.account.evm_address,
                     amount,
@@ -121,12 +190,15 @@ class Zora:
                     price_limit,
                     referrer,
                 ),
-                action=f'Buying at least {human_i2d(min_amount_out)} ${info["coinName"]} '
-                       f'for {human_i2d(amount)} ETH',
-                value=amount,
+                action=action,
+                **tx_vars,
             )
-            self.account.buys += 1
-            self.account.volume += int_to_decimal(amount)
+
+        if buy_chain != coin.chain:
+            await self._relay_tx(tx, CHAIN_IDS[buy_chain], CHAIN_IDS[coin.chain], action)
+
+        self.account.buys += 1
+        self.account.volume += int_to_decimal(amount)
 
     async def buy_random_top(self):
         coins = await self.client.get_top_today()
@@ -317,14 +389,12 @@ class Zora:
             account = await self.client.get_my_account()
             await self.link_twitter(on_creating=True)
             await wait_a_bit(3)
-        print('Account', account)
         if account.get('username', '').lower() == self.account.evm_address.lower():
             await wait_a_bit(3)
             await self.update_username()
             await wait_a_bit(10)
             account = await self.client.get_my_account()
         profile = await self.client.get_my_profile()
-        print('Profile', profile)
         if not profile.get('avatarUri'):
             display_name = profile.get('displayName')
             if display_name is None:

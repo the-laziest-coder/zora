@@ -20,7 +20,7 @@ from .async_web3 import AsyncHTTPProviderWithUA
 
 ssl_context = ssl._create_unverified_context() if DISABLE_SSL else ssl.create_default_context(cafile=certifi.where())
 if DISABLE_SSL:
-    ssl._create_default_https_context = ssl._create_unverified_context
+    ssl.create_default_context = ssl._create_unverified_context
 
 
 Faker.seed(int(time.time() * 1000))
