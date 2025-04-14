@@ -109,6 +109,7 @@ class EVM:
             **gas_vars,
             **tx_vars,
         })
+        del tx['gas']
         if 'no_send' in tx_vars:
             return tx
         try:
