@@ -199,6 +199,7 @@ class Zora:
 
         self.account.buys += 1
         self.account.volume += int_to_decimal(amount)
+        self.account.total_buys_amount += int_to_decimal(amount)
 
     async def buy_random_top(self):
         coins = await self.client.get_top_today()
@@ -268,7 +269,8 @@ class Zora:
                        f'for at least {human_i2d(min_amount_out)} ETH',
             )
             self.account.sells += 1
-            self.account.volume += int_to_decimal(min_amount_out)
+            self.account.volume += int_to_decimal(amount_out)
+            self.account.total_sells_amount += int_to_decimal(amount_out)
             self.sold_in_session.append((coin.chain.lower(), coin.address.lower()))
 
     async def link_email(self):
@@ -443,6 +445,27 @@ class Zora:
             }
             profile = profile_id
         return coins
+
+    async def calc_portfolio(self):
+        coins = await self._get_holdings()
+        random.shuffle(coins)
+        portfolio = 0
+        logger.info(f'{self.idx}) Starting calculate portfolio ({len(coins)} coins)')
+        async with EVM(self.account, 'Base') as evm:
+            for coin in coins:
+                chain_id, address = coin['chainId'], coin['address']
+                if chain_id != CHAIN_IDS['Base']:
+                    continue
+                token = evm.contract(address, erc20=True)
+                balance = await token.functions.balanceOf(self.account.evm_address).call()
+                info = await self.client.get_coin_info(chain_id, address)
+                await wait_a_bit(2)
+                pool_address = info['uniswapPoolAddress']
+                quote = await self.client.get_coin_quote(pool_address, chain_id, balance, 'sell')
+                amount_out = int(quote['amountOut'])
+                portfolio += int_to_decimal(amount_out)
+                await wait_a_bit(2)
+        self.account.portfolio = portfolio
 
     async def sell_random(self):
         coins = await self._get_holdings()

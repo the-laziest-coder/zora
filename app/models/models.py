@@ -33,6 +33,9 @@ class AccountInfo:
     sells: int = 0
     creates: int = 0
     volume: float = 0
+    total_buys_amount: float = 0
+    total_sells_amount: float = 0
+    portfolio: float = 0
     profile_completed: bool = False
 
     def sign_message(self, msg) -> str:
@@ -44,8 +47,14 @@ class AccountInfo:
                 f'\tBuys: {self.buys}\n'
                 f'\tSells: {self.sells}\n'
                 f'\tCreates: {self.creates}\n'
-                f'\tVolume: {round(self.volume, 4)} ETH\n')
+                f'\tVolume: {round(self.volume, 4)} ETH\n'
+                f'\tPNL: {round(self.pnl, 4)} ETH\n'
+                f'\tPortfolio: {round(self.portfolio, 4)} ETH')
 
     @property
     def twitter_error_s(self):
         return '🔴' if self.twitter_error else ''
+
+    @property
+    def pnl(self) -> float:
+        return self.total_sells_amount - self.total_buys_amount

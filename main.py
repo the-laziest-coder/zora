@@ -64,6 +64,7 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str]],
         account_info.email_password = email_password
         logger.info(f'{idx}) Saved account info restored')
 
+    account_info.idx = idx
     account_info.twitter_error = False
 
     if '|' in account_info.proxy:
@@ -150,6 +151,13 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str]],
 
                 await storage.set_account_info(evm_address, account_info)
                 await storage.async_save()
+
+            try:
+                await zora.calc_portfolio()
+                await storage.set_account_info(evm_address, account_info)
+                await storage.async_save()
+            except Exception as e:
+                logger.warning(f'{idx}) Calculating portfolio failed: {e}')
 
             if STORE_CREATED:
                 logger.info(f'{idx}) Storing created coins')
@@ -243,8 +251,10 @@ def main():
 
     def get_batches(skip: int = None, threads: int = THREADS_NUM):
         _data = list(enumerate(list(zip(evm_wallets, proxies, twitters, emails)), start=1))
+        exclude = []
         if skip is not None:
             _data = _data[skip:]
+            _data = [d for d in _data if d[0] not in exclude]
         if skip is not None and len(want_only) > 0:
             _data = [d for d in enumerate(list(zip(evm_wallets, proxies, twitters, emails)), start=1)
                      if d[0] in want_only]
@@ -276,7 +286,7 @@ def main():
         logger.info(f'Failed ids: {sorted(failed)}')
         print()
 
-    csv_data = [['#', 'EVM Address', 'Volume', 'Buys', 'Sells', 'Creates', 'Profile Completed']]
+    csv_data = [['#', 'EVM Address', 'Volume', 'PNL', 'Portfolio', 'Buys', 'Sells', 'Creates', 'Profile Completed']]
     for idx, w in enumerate(evm_wallets, start=1):
         evm_address = EthAccount().from_key(w).address
         account = storage.get_final_account_info(evm_address)
@@ -285,10 +295,11 @@ def main():
             continue
 
         csv_data.append([idx, evm_address,
-                         '%.3f' % account.volume, account.buys, account.sells, account.creates,
+                         '%.3f' % account.volume, '%.3f' % account.pnl, '%.3f' % account.portfolio,
+                         account.buys, account.sells, account.creates,
                          account.profile_completed])
 
-    csv_data.append(['#', 'EVM Address', 'Volume', 'Buys', 'Sells', 'Creates', 'Profile Completed'])
+    csv_data.append(['#', 'EVM Address', 'Volume', 'PNL', 'Portfolio', 'Buys', 'Sells', 'Creates', 'Profile Completed'])
 
     print(tabulate(csv_data, headers='firstrow', tablefmt='fancy_grid'))
 
