@@ -215,7 +215,7 @@ class Client:
     ) -> dict:
         await self.ensure_authorized()
         try:
-            inp = json.dumps({
+            inp = jsons({
                 'json': {
                     'poolAddress': pool_address.lower(),
                     'chainId': chain_id,
@@ -323,12 +323,12 @@ class Client:
             )
             return profile['id'], profile['handle']
         except Exception as e:
-            raise Exception(f'Get my profile id ailed: {e}') from e
+            raise Exception(f'Get my profile id failed: {e}') from e
 
     async def get_my_account(self, can_be_not_found: bool = False) -> Optional[dict]:
         await self.ensure_authorized()
         try:
-            inp = json.dumps({
+            inp = jsons({
                 'json': None,
                 'meta': {'values': ['undefined']},
             })
@@ -356,8 +356,8 @@ class Client:
     async def get_my_profile(self) -> dict:
         await self.ensure_authorized()
         try:
-            inp = json.dumps({
-                'json': self.account.evm_address,
+            inp = jsons({
+                'json': self.account.evm_address.lower(),
             })
             return await self.tls.get(
                 'https://zora.co/api/trpc/profile.getProfile',
@@ -468,7 +468,7 @@ class Client:
     async def is_username_available(self, username: str) -> bool:
         await self.ensure_authorized()
         try:
-            inp = json.dumps({
+            inp = jsons({
                 'json': username,
             })
             status = await self.tls.get(
@@ -726,3 +726,7 @@ class Client:
             )
         except Exception as e:
             raise Exception(f'Embedded share failed: {e}') from e
+
+
+def jsons(obj) -> str:
+    return json.dumps(obj, separators=(',', ':'))
