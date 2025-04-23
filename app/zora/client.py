@@ -12,16 +12,17 @@ from ..utils import wait_a_bit, get_query_param, async_retry
 
 class Client:
 
-    def __init__(self, account: AccountInfo):
+    def __init__(self, account: AccountInfo, claim: bool = False):
         self.account = account
+        self.claim = claim
         if not self.account.device_id:
             self.account.device_id = str(uuid4())
         if not self.account.privy_ca_id:
             self.account.privy_ca_id = str(uuid4())
         self.tls = TLSClient(self.account, {
-            'origin': 'https://zora.co',
+            'origin': 'https://claim.zora.co' if claim else 'https://zora.co',
             'priority': 'u=1, i',
-            'referer': 'https://zora.co/',
+            'referer': 'https://claim.zora.co/' if claim else 'https://zora.co/',
         }, {
             'device_id': self.account.device_id,
             'wallet_address': self.account.evm_address,
@@ -30,10 +31,13 @@ class Client:
             'privy-app-id': 'clpgf04wn04hnkw0fv1m11mnb',
             'privy-ca-id': self.account.privy_ca_id,
             'privy-client': 'react-auth:1.98.1',
-            'privy-client-id': 'client-WY2f8mnC65aGnM2LmXpwBU5GqK3kxYqJoV7pSNRJLWrp6',
+            'privy-client-id': 'client-WY2f8mnC65aGnM2LmXpwBU5GqK3kxYqJoV8pqQSdrafxX' if claim else \
+                'client-WY2f8mnC65aGnM2LmXpwBU5GqK3kxYqJoV7pSNRJLWrp6',
         }
         self.has_email = False
         self.embedded_wallet: str = ''
+        self.base_url = 'https://auth.privy.io' if self.claim else 'https://privy.zora.co'
+        self.privy_token = ''
 
     async def close(self):
         await self.tls.close()
@@ -41,7 +45,7 @@ class Client:
     async def _init(self) -> str:
         try:
             return await self.tls.post(
-                'https://privy.zora.co/api/v1/siwe/init',
+                f'{self.base_url}/api/v1/siwe/init',
                 [200], lambda r: r['nonce'],
                 json={'address': self.account.evm_address},
                 headers=self.privy_headers,
@@ -51,9 +55,12 @@ class Client:
 
     async def _authenticate(self, msg: str, sign: str):
         try:
-            token, linked_accounts = await self.tls.post(
-                'https://privy.zora.co/api/v1/siwe/authenticate',
-                [200], lambda r: (r['token'], r['user']['linked_accounts']),
+            privy_token, token, linked_accounts = await self.tls.post(
+                f'{self.base_url}/api/v1/siwe/authenticate',
+                [200], lambda r: (
+                    r['privy_access_token'], r['token'],
+                    r['user']['linked_accounts'],
+                ),
                 json={
                     'chainId': 'eip155:1',
                     'connectorType': 'injected',
@@ -65,8 +72,10 @@ class Client:
                 headers=self.privy_headers,
             )
             self.tls.sess.headers.update({
-                'authorization': 'Bearer' + token,
+                'authorization': 'Bearer ' + token,
             })
+            if self.claim:
+                self.privy_headers['authorization'] = 'Bearer ' + privy_token
             self.has_email = any(a.get('type') == 'email' and a.get('verified_at') and a.get('address')
                                  for a in linked_accounts)
             self.embedded_wallet = next((a['address'] for a in linked_accounts
@@ -81,11 +90,12 @@ class Client:
 
         await wait_a_bit(5)
 
-        msg = f'zora.co wants you to sign in with your Ethereum account:\n' \
+        domain = 'claim.zora.co' if self.claim else 'zora.co'
+        msg = f'{domain} wants you to sign in with your Ethereum account:\n' \
               f'{self.account.evm_address}\n\n' \
               f'By signing, you are proving you own this wallet and logging in. ' \
               f'This does not initiate a transaction or cost any fees.\n\n' \
-              f'URI: https://zora.co\n' \
+              f'URI: https://{domain}\n' \
               f'Version: 1\n' \
               f'Chain ID: 1\n' \
               f'Nonce: {nonce}\n' \
@@ -102,7 +112,7 @@ class Client:
     async def _sessions(self):
         try:
             token = await self.tls.post(
-                'https://privy.zora.co/api/v1/sessions',
+                f'{self.base_url}/api/v1/sessions',
                 [200], lambda r: r['token'],
                 json={'refresh_token': 'deprecated'},
                 headers=self.privy_headers,
@@ -116,7 +126,7 @@ class Client:
     async def ensure_authorized(self, refresh: bool = False):
         if self.tls.sess.headers.get('authorization') is None:
             await self.sign_in()
-            refresh = True
+            refresh = not self.claim
         if refresh:
             await self._sessions()
 
@@ -657,7 +667,7 @@ class Client:
         await self.ensure_authorized()
         try:
             return await self.tls.post(
-                f'https://privy.zora.co/api/v1/embedded_wallets/{wallet}/recovery/key_material',
+                f'{self.base_url}/api/v1/embedded_wallets/{wallet}/recovery/key_material',
                 [200], lambda r: (r['recovery_key'], r['recovery_type']),
                 json={'chain_type': 'ethereum'},
                 headers=self.privy_headers,
@@ -669,7 +679,7 @@ class Client:
         await self.ensure_authorized()
         try:
             return await self.tls.post(
-                f'https://privy.zora.co/api/v1/embedded_wallets/{wallet}/recovery/auth_share',
+                f'{self.base_url}/api/v1/embedded_wallets/{wallet}/recovery/auth_share',
                 [200], lambda r: r['share'],
                 json={'chain_type': 'ethereum'},
                 headers=self.privy_headers,
@@ -681,7 +691,7 @@ class Client:
         await self.ensure_authorized()
         try:
             return await self.tls.post(
-                f'https://privy.zora.co/api/v1/embedded_wallets/{wallet}/recovery/shares',
+                f'{self.base_url}/api/v1/embedded_wallets/{wallet}/recovery/shares',
                 [200], lambda r: (
                     r['encrypted_recovery_share'], r['encrypted_recovery_share_iv'], r['imported']
                 ),
@@ -698,7 +708,7 @@ class Client:
         await self.ensure_authorized()
         try:
             resp = await self.tls.post(
-                f'https://privy.zora.co/api/v1/embedded_wallets/{wallet}/recovery/device',
+                f'{self.base_url}/api/v1/embedded_wallets/{wallet}/recovery/device',
                 [200], lambda r: r,
                 json={
                     'chain_type': 'ethereum',
@@ -716,7 +726,7 @@ class Client:
         await self.ensure_authorized()
         try:
             await self.tls.post(
-                f'https://privy.zora.co/api/v1/embedded_wallets/{wallet}/share',
+                f'{self.base_url}/api/v1/embedded_wallets/{wallet}/share',
                 [200], lambda r: (r['imported'], r['share']),
                 json={
                     'chain_type': 'ethereum',
@@ -726,6 +736,66 @@ class Client:
             )
         except Exception as e:
             raise Exception(f'Embedded share failed: {e}') from e
+
+    async def airdrop_allocation(self) -> tuple[float, list[dict]]:
+        await self.ensure_authorized()
+        try:
+            result = await self.tls.post(
+                'https://api.zora.co/universal/graphql',
+                [200], lambda r: r['data']['zoraTokenAllocation']['totalTokensEarned'],
+                json={
+                    'query': 'query useAccountAllocationsDataQuery(\n  $identifiers: [String!]!\n  $chainId: Int!\n  $zoraClaimContractEnv: EZoraClaimContractEnv!\n) {\n  zoraTokenAllocation(identifierWalletAddresses: $identifiers, chainId: $chainId, zoraClaimContractEnv: $zoraClaimContractEnv) {\n    totalTokensEarned {\n      totalTokens\n      walletAllocation {\n        claimStatus\n        tokens\n        walletAddress\n        walletType\n        walletProfile {\n          __typename\n          id\n          handle\n          ... on GraphQLAccountProfile {\n            smartWallet {\n              smartWalletConfig {\n                owners {\n                  ownerAddress\n                  ownerIndex\n                }\n                id\n              }\n              id\n            }\n          }\n          ...AvatarFragment\n        }\n      }\n    }\n  }\n}\n\nfragment AvatarFragment on IGraphQLProfile {\n  __isIGraphQLProfile: __typename\n  handle\n  avatar {\n    icon\n    small\n    blurhash\n  }\n}\n',
+                    'variables': {
+                        'chainId': 8453,
+                        'identifiers': [self.account.evm_address],
+                        'zoraClaimContractEnv': 'PRODUCTION',
+                    },
+                },
+            )
+            return result['totalTokens'], result['walletAllocation']
+        except Exception as e:
+            raise Exception(f'Check airdrop allocation failed: {e}') from e
+
+    async def zora_token_claim(self, claim_to: str, deadline: int, sign: str, from_addr: str = None) -> str:
+        await self.ensure_authorized()
+        from_addr = from_addr or claim_to
+        try:
+            return await self.tls.post(
+                'https://claim.zora.co/api/trpc/zoraToken.claim',
+                [200], lambda r: r['result']['data']['json']['tx'],
+                json={
+                    'json': {
+                        'chainId': 8453,
+                        'claimTo': claim_to.lower(),
+                        'deadline': str(deadline),
+                        'from': from_addr.lower(),
+                        'signature': sign,
+                    },
+                },
+                headers=self._non_bearer_headers(),
+            )
+        except Exception as e:
+            raise Exception(f'Zora token claim failed: {e}') from e
+
+    async def create_send_erc20_user_operation(self, tx: dict) -> tuple[dict, dict]:
+        await self.ensure_authorized()
+        try:
+            body = {
+                'json': tx,
+                'meta': {
+                    'values': {
+                        'amount': ['bigint'],
+                    },
+                },
+            }
+            return await self.tls.post(
+                'https://zora.co/api/trpc/smartWallet.createSendERC20UserOperation',
+                [200], lambda r: (r['result']['data']['json'], r['result']['data']['meta']),
+                json=body,
+                headers=self._non_bearer_headers(),
+            )
+        except Exception as e:
+            raise Exception(f'Create send ERC20 user operation failed: {e}') from e
 
 
 def jsons(obj) -> str:

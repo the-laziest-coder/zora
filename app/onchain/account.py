@@ -244,9 +244,11 @@ class EVM:
         return self.w3.eth.contract(Web3.to_checksum_address(address), abi=abi)
 
     @async_retry
-    async def token_balance(self, token_address) -> int:
+    async def token_balance(self, token_address, owner: str = None) -> int:
         contract = self.contract(Web3.to_checksum_address(token_address), erc20=True)
-        return await contract.functions.balanceOf(self.account.evm_address).call()
+        owner = owner or self.account.evm_address
+        owner = Web3.to_checksum_address(owner)
+        return await contract.functions.balanceOf(owner).call()
 
     # contract should have `approve` and `allowance` functions
     @async_retry

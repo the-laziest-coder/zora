@@ -24,6 +24,7 @@ class AccountInfo:
     twitter_ct0: str = ''
     email_username: str = ''
     email_password: str = ''
+    withdraw_address: str = ''
     twitter_error: bool = False
     device_id: str = ''
     privy_ca_id: str = ''
@@ -37,6 +38,9 @@ class AccountInfo:
     total_sells_amount: float = 0
     portfolio: float = 0
     profile_completed: bool = False
+    airdrop: float = 0
+    claimed: float = 0
+    zora_balance: float = 0
 
     def sign_message(self, msg) -> str:
         return EvmAccount().sign_message(encode_defunct(text=msg), self.evm_private_key).signature.hex()
@@ -49,7 +53,10 @@ class AccountInfo:
                 f'\tCreates: {self.creates}\n'
                 f'\tVolume: {round(self.volume, 4)} ETH\n'
                 f'\tPNL: {round(self.pnl, 4)} ETH\n'
-                f'\tPortfolio: {round(self.portfolio, 4)} ETH')
+                f'\tPortfolio: {round(self.portfolio, 4)} ETH\n'
+                f'\tAirdrop: {round(self.airdrop)} $ZORA\n'
+                f'\tClaimed: {round(self.claimed)} $ZORA\n'
+                f'\t$ZORA balance on main wallet: {round(self.zora_balance)}\n')
 
     @property
     def twitter_error_s(self):

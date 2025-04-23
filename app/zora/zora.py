@@ -1,10 +1,14 @@
 import copy
 import json
+import time
 import random
 from dataclasses import dataclass
 from loguru import logger
 from web3 import Web3
+from eth_account.messages import encode_typed_data
 import eth_abi
+from eth_abi.packed import encode_packed
+import eth_utils
 
 
 from ..config import BUY_AMOUNT, BUY_FROM_ZORA_CHANCE, MAX_TOP, SELL_PERCENT, SELL_IF_BALANCE_VALUE_GREATER_THAN
@@ -17,6 +21,9 @@ from ..utils import (wait_a_bit, human_int, decimal_to_int, int_to_decimal, huma
                      get_query_param, fake_username, fake_filename, fake_name, write_to_file)
 from .client import Client
 from .utils import *
+
+
+ZORA_TOKEN = '0x1111111111166b7fe7bd91427724b487980afc69'
 
 
 def _is_address(address: str) -> bool:
@@ -68,13 +75,16 @@ class ZoraCoin:
 
 class Zora:
 
-    def __init__(self, account: AccountInfo):
+    def __init__(self, account: AccountInfo, claim: bool = False):
         self.idx = account.idx
         self.account = account
         self.client = Client(self.account)
+        self.claim_client = Client(self.account, claim=True) if claim else None
         self.sold_in_session = []
 
     async def close(self):
+        if self.claim_client:
+            await self.claim_client.close()
         await self.client.close()
 
     async def __aenter__(self) -> "Zora":
@@ -491,6 +501,7 @@ class Zora:
                     return
                 logger.info(f'{self.idx}) Will not sell {name}, because it\'s balance value is too low '
                             f'({human_i2d(amount_out)} ETH)')
+                await wait_a_bit(2)
         raise Exception('Nothing to sell')
 
     def _get_device_id(self) -> str:
@@ -603,22 +614,25 @@ class Zora:
 
         self.account.creates += 1
 
-    async def _get_embedded_wallet_pk(self) -> str:
-        embedded = self.client.embedded_wallet
+    async def _get_embedded_wallet_pk(self, in_claim: bool = False) -> str:
+        client = self.claim_client if in_claim else self.client
+
+        await client.ensure_authorized()
+        embedded = client.embedded_wallet
 
         if self.account.embedded_pk:
-            await self.client.embedded_share(embedded, self._get_device_id())
+            await client.embedded_share(embedded, self._get_device_id())
             return self.account.embedded_pk
 
         logger.info(f'{self.idx}) Recovering embedded wallet...')
 
-        r_key, r_type = await self.client.recovery_key_material(embedded)
+        r_key, r_type = await client.recovery_key_material(embedded)
         if r_type != 'privy_generated_recovery_key':
             raise Exception('Unsupported recovery key type')
-        auth_share = await self.client.recovery_auth_share(embedded)
+        auth_share = await client.recovery_auth_share(embedded)
         recovery_key_hash = get_key_hash(r_key)
 
-        enc_r_share, enc_r_share_iv, imported = await self.client.recovery_shares(embedded, recovery_key_hash)
+        enc_r_share, enc_r_share_iv, imported = await client.recovery_shares(embedded, recovery_key_hash)
         if imported:
             raise Exception('Imported recovery not supported')
 
@@ -635,7 +649,7 @@ class Zora:
 
         device_id = self._get_device_id()
 
-        await self.client.recovery_device(embedded, device_auth_share, device_id)
+        await client.recovery_device(embedded, device_auth_share, device_id)
 
         self.account.embedded_pk = acc.key.hex()
         return self.account.embedded_pk
@@ -692,6 +706,204 @@ class Zora:
         coins = [f'{self.account.evm_address};{c.to_link()}' for c in coins]
         coins = '\n'.join(coins)
         await write_to_file(coins, file_name)
+
+    async def _smart_wallet_claim(self, smart_wallet: dict, allocation: float, from_addr: str = None):
+        logger.info(f'{self.idx}) Signing claim $ZORA tx data with embedded wallet')
+
+        smart_wallet_address = Web3.to_checksum_address(smart_wallet['walletAddress'])
+
+        embedded_pk = await self._get_embedded_wallet_pk(in_claim=True)
+
+        deadline = int(time.time() + 28)
+        from_privy = from_addr is not None
+        from_addr = Web3.to_checksum_address(from_addr or smart_wallet_address)
+
+        typed_data = {
+            'types': {
+                'ClaimWithSignature': [
+                    {'name': 'user', 'type': 'address'},
+                    {'name': 'claimTo', 'type': 'address'},
+                    {'name': 'deadline', 'type': 'uint256'},
+                ],
+            },
+            'message': {
+                'user': from_addr,
+                'claimTo': smart_wallet_address,
+                'deadline': deadline,
+            },
+            'domain': {
+                'chainId': 8453,
+                'name': 'ZoraTokenCommunityClaim',
+                'version': '1',
+                'verifyingContract': '0x0000000002ba96C69b95E32CAAB8fc38bAB8B3F8',
+            },
+            'primaryType': 'ClaimWithSignature',
+        }
+
+        if from_privy:
+            signature = Account.sign_typed_data(embedded_pk, full_message=typed_data).signature.hex()
+        else:
+            from eth_account.messages import encode_structured_data
+            typed_data['types']['EIP712Domain'] = [
+                {'name': 'name', 'type': 'string'},
+                {'name': 'version', 'type': 'string'},
+                {'name': 'chainId', 'type': 'uint256'},
+                {'name': 'verifyingContract', 'type': 'address'},
+            ]
+            msg_hash = eth_utils.keccak(b''.join([bytes.fromhex("19"), *encode_structured_data(typed_data)]))
+            typed_data = {
+                'types': {
+                    'CoinbaseSmartWalletMessage': [
+                        {'name': 'hash', 'type': 'bytes32'},
+                    ],
+                },
+                'primaryType': 'CoinbaseSmartWalletMessage',
+                'message': {
+                    'hash': msg_hash,
+                },
+                'domain': {
+                    'chainId': 8453,
+                    'name': 'Coinbase Smart Wallet',
+                    'verifyingContract': smart_wallet_address,
+                    'version': '1',
+                },
+            }
+            signature = Account.sign_typed_data(embedded_pk, full_message=typed_data).signature
+            if len(signature) != 65:
+                signature_data = signature
+            else:
+                s_r, s_s, s_v = signature[:32], signature[32:64], signature[64]
+                signature_data = encode_packed(
+                    ['bytes32', 'bytes32', 'uint8'],
+                    [s_r, s_s, int(s_v)]
+                )
+            owner_index = -1
+            for owner in smart_wallet['walletProfile']['smartWallet']['smartWalletConfig']['owners']:
+                if owner['ownerAddress'].lower() != self.claim_client.embedded_wallet.lower():
+                    continue
+                owner_index = owner['ownerIndex']
+            if owner_index == -1:
+                raise Exception('Smart wallet owner index not found')
+            signature = '0x' + eth_abi.encode(['(uint8,bytes)'], [(owner_index, signature_data)]).hex()
+
+        logger.info(f'{self.idx}) Submitting signed claim')
+
+        tx_hash = await self.claim_client.zora_token_claim(smart_wallet_address, deadline, signature, from_addr=from_addr)
+        await wait_a_bit(4)
+
+        await self._send_zora_from_smart_wallet(smart_wallet_address, tx_hash, allocation)
+
+    async def _send_zora_from_smart_wallet(self, smart_wallet: str, tx_hash: str = None, allocation: float = None):
+        async with EVM(self.account, 'Base') as evm:
+            if tx_hash:
+                await evm.tx_verification(tx_hash, f'Claiming {allocation} tokens with Smart Wallet')
+
+            balance = await evm.token_balance(ZORA_TOKEN, owner=smart_wallet)
+            logger.info(f'{self.idx}) Sending {human_i2d(balance)} $ZORA from smart wallet to main')
+
+            send_tx = {
+                'amount': str(balance),
+                'chainId': 8453,
+                'erc20Address': ZORA_TOKEN,
+                'recipientAddress': self.account.evm_address.lower(),
+            }
+            user_op, meta = await self.client.create_send_erc20_user_operation(send_tx)
+
+            logger.info(f'{self.idx}) Signing tx with embedded wallet')
+
+            embedded_pk = await self._get_embedded_wallet_pk()
+
+            signature = self._sign_user_operation(user_op, meta, chain_id=8453, pk=embedded_pk)
+
+            logger.info(f'{self.idx}) Submitting signed tx')
+
+            tx_hash = await self.client.submit_user_operation({
+                'chainId': 8453,
+                'signature': signature,
+                'userOperation': user_op,
+            }, {
+                'values': {'userOperation.' + k: v for k, v in meta.get('values', {}).items()},
+            })
+
+            await evm.tx_verification(tx_hash, f'Sending {human_i2d(balance)} $ZORA to main wallet')
+            await wait_a_bit(4)
+
+    async def claim_airdrop(self):
+        if self.claim_client is None:
+            raise Exception('Claim client not defined')
+        total_allocation, wallets_allocation = await self.claim_client.airdrop_allocation()
+        self.account.airdrop = total_allocation
+
+        async with EVM(self.account, 'Base') as evm:
+            zora_balance_before = await evm.token_balance(ZORA_TOKEN)
+
+        smart_wallet = next((w for w in wallets_allocation if w['walletType'] == 'SMART_WALLET'), None)
+
+        claimed_amount = 0
+
+        for wallet in wallets_allocation:
+            wallet_type = wallet['walletType']
+            allocation = wallet['tokens']
+            if wallet['claimStatus'] == 'CLAIMED':
+                sent = True
+                if wallet_type != 'EXTERNAL':
+                    if smart_wallet is None:
+                        logger.error(f'{self.idx}) No smart wallet found for some reason, '
+                                     f'but {wallet_type} wallet allocation already claimed')
+                        continue
+                    async with EVM(self.account, 'Base') as evm:
+                        smart_balance = await evm.token_balance(ZORA_TOKEN, owner=smart_wallet['walletAddress'])
+                    if smart_balance > 0:
+                        sent = False
+                        logger.info(f'{self.idx}) {wallet_type} wallet allocation ({allocation}) already claimed, '
+                                    f'need to send it to main wallet')
+                        await self._send_zora_from_smart_wallet(smart_wallet['walletAddress'])
+                if sent:
+                    logger.info(f'{self.idx}) {wallet_type} wallet allocation ({allocation}) already claimed')
+                claimed_amount += allocation
+                continue
+            if allocation == 0:
+                continue
+            logger.info(f'{self.idx}) Claiming {allocation} tokens for {wallet_type} wallet')
+            match wallet_type:
+                case 'SMART_WALLET':
+                    await self._smart_wallet_claim(wallet, allocation)
+                case 'EXTERNAL':
+                    async with EVM(self.account, 'Base') as evm:
+                        contract = evm.contract(
+                            '0x0000000002ba96C69b95E32CAAB8fc38bAB8B3F8',
+                            'claim(address)',
+                        )
+                        await evm.build_and_send_tx(
+                            contract.functions.claim(self.account.evm_address),
+                            action=f'Claiming {allocation} tokens on main wallet'
+                        )
+                        await wait_a_bit(4)
+                case 'PRIVY':
+                    if smart_wallet is None:
+                        logger.error(f'{self.idx}) Smart wallet not found')
+                        continue
+                    await self._smart_wallet_claim(smart_wallet, allocation)
+                case _:
+                    logger.warning(f'{self.idx}) Unknown wallet type: {wallet_type}')
+                    continue
+            claimed_amount += allocation
+        async with EVM(self.account, 'Base') as evm:
+            zora_balance = await evm.token_balance(ZORA_TOKEN)
+        logger.info(f'{self.idx}) Claimed {human_i2d(zora_balance - zora_balance_before)} $ZORA. '
+                    f'Current balance: {human_i2d(zora_balance)} $ZORA')
+        self.account.claimed = claimed_amount
+        self.account.zora_balance = int_to_decimal(zora_balance)
+
+        if self.account.withdraw_address and zora_balance > 0:
+            await wait_a_bit(4)
+            async with EVM(self.account, 'Base') as evm:
+                zora_contract = evm.contract(ZORA_TOKEN, 'transfer(address,uint256)')
+                withdraw_address = Web3.to_checksum_address(self.account.withdraw_address)
+                await evm.build_and_send_tx(
+                    zora_contract.functions.transfer(withdraw_address, zora_balance),
+                    action=f'Sending {human_i2d(zora_balance)} $ZORA to withdraw address',
+                )
 
 
 ENTRYPOINT_ADDRESS = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789'

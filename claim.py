@@ -12,8 +12,8 @@ from typing import Tuple, Optional
 from eth_account import Account as EthAccount
 
 from app.config import (WAIT_BETWEEN_ACCOUNTS, THREADS_NUM, SKIP_FIRST_ACCOUNTS, RANDOM_ORDER, STORE_CREATED,
-                        ONLY_CHECK_STATS, COINS, ACTIONS, SETUP_PROFILE, DELAY_BETWEEN_ACTIONS, WANT_ONLY)
-from app.utils import async_retry, wait_a_bit, log_long_exc
+                        ONLY_CHECK_STATS, COINS, WANT_ONLY)
+from app.utils import async_retry, log_long_exc
 from app.zora import Zora, ZoraCoin
 from app.models import AccountInfo
 from app.storage import AccountStorage
@@ -37,10 +37,10 @@ async def change_ip(idx, link: str):
             logger.info(f'{idx}) Successfully changed ip: {await resp.text()}')
 
 
-async def process_account(account_data: Tuple[int, Tuple[str, str, str, str]],
+async def process_account(account_data: Tuple[int, Tuple[str, str, str, str, str]],
                           storage: AccountStorage):
 
-    idx, (evm_wallet, proxy, twitter_token, email) = account_data
+    idx, (evm_wallet, proxy, twitter_token, email, withdraw_address) = account_data
 
     evm_address = EthAccount().from_key(evm_wallet).address
 
@@ -55,13 +55,14 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str]],
     if account_info is None:
         logger.info(f'{idx}) Account info was not saved before')
         account_info = AccountInfo(idx=idx, evm_address=evm_address, evm_private_key=evm_wallet,
-                                   proxy=proxy, twitter_auth_token=twitter_token,
+                                   proxy=proxy, twitter_auth_token=twitter_token, withdraw_address=withdraw_address,
                                    email_username=email_username, email_password=email_password)
     else:
         account_info.proxy = proxy
         account_info.twitter_auth_token = twitter_token
         account_info.email_username = email_username
         account_info.email_password = email_password
+        account_info.withdraw_address = withdraw_address
         logger.info(f'{idx}) Saved account info restored')
 
     account_info.idx = idx
@@ -74,97 +75,9 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str]],
     exc: Optional[Exception] = None
 
     try:
-        buy_links = random.randint(*ACTIONS.get('BUY_LINKS', (0, 0)))
-        buy_top = random.randint(*ACTIONS.get('BUY_TOP', (0, 0)))
-        sells = random.randint(*ACTIONS.get('SELLS', (0, 0)))
-        follows = random.randint(*ACTIONS.get('FOLLOW', (0, 0)))
-        creates = random.randint(*ACTIONS.get('CREATES', (0, 0)))
-        logger.info(f'{idx}) Will do:\n'
-                    f'\t{buy_links} buys from coins.txt\n'
-                    f'\t{buy_top} buys from top today\n'
-                    f'\t{sells} sells\n'
-                    f'\t{creates} creates\n'
-                    f'\t{follows} follows\n')
 
-        actions = (
-            ['buy_link'] * buy_links +
-            ['buy_top'] * buy_top +
-            ['follow'] * follows +
-            ['create'] * creates
-        )
-        random.shuffle(actions)
-
-        i, sells_left = 0, sells
-        while i < len(actions) and sells_left > 0:
-            i += 1
-            if actions[i - 1] not in ('buy_link', 'buy_top'):
-                continue
-            sell_index = random.randint(i, len(actions))
-            actions.insert(sell_index, 'sell')
-            sells_left -= 1
-        if sells_left > 0:
-            last_buy_index = -1
-            for i, a in enumerate(actions):
-                if a in ('buy_link', 'buy_top'):
-                    last_buy_index = i
-            for _ in range(sells_left):
-                sell_index = random.randint(last_buy_index + 1, len(actions))
-                actions.insert(sell_index, 'sell')
-
-        async with Zora(account_info) as zora:
-            if SETUP_PROFILE:
-                try:
-                    await zora.setup_profile()
-                except Exception as e:
-                    logger.warning(f'{idx}) Setting up profile failed: {e}')
-                await wait_a_bit(10)
-            coins = copy.deepcopy(COINS)
-            random.shuffle(coins)
-            coin_idx = 0
-            for action_id, action in enumerate(actions, start=1):
-                if action_id != 1:
-                    delay = random.uniform(*DELAY_BETWEEN_ACTIONS)
-                    logger.info(f'{idx}) Sleeping {round(delay)}s before next action')
-                    await asyncio.sleep(delay)
-                action_name = action.replace('_', ' ').strip().title()
-                logger.info(f'{idx}) Starting action#{action_id} {action_name}')
-                try:
-                    match action:
-                        case 'buy_link':
-                            if coin_idx >= len(coins):
-                                raise Exception('No coins left')
-                            coin_idx += 1
-                            coin = ZoraCoin.from_link(coins[coin_idx - 1])
-                            await zora.buy(coin)
-                        case 'buy_top':
-                            await zora.buy_random_top()
-                        case 'sell':
-                            await zora.sell_random()
-                        case 'follow':
-                            await zora.follow_random()
-                        case 'create':
-                            await zora.create()
-                        case unexpected:
-                            raise Exception(f'Action "{unexpected}" not supported')
-                except Exception as e:
-                    logger.warning(f'{idx}) Action#{action_id} {action_name} failed: {e}')
-
-                await storage.set_account_info(evm_address, account_info)
-                await storage.async_save()
-
-            try:
-                await zora.calc_portfolio()
-                await storage.set_account_info(evm_address, account_info)
-                await storage.async_save()
-            except Exception as e:
-                logger.warning(f'{idx}) Calculating portfolio failed: {e}')
-
-            if STORE_CREATED:
-                logger.info(f'{idx}) Storing created coins')
-                try:
-                    await zora.store_created(CREATED_FILE)
-                except Exception as e:
-                    logger.warning(f'{idx}) Store created coins failed: {e}')
+        async with Zora(account_info, claim=True) as zora:
+            await zora.claim_airdrop()
 
     except Exception as zora_exc:
         exc = Exception(f'Zora error: {zora_exc}')
@@ -224,6 +137,9 @@ def main():
     with open('files/emails.txt', 'r', encoding='utf-8') as file:
         emails = file.read().splitlines()
         emails = [e.strip() for e in emails]
+    with open('files/withdraw_addresses.txt', 'r', encoding='utf-8') as file:
+        withdraw_addresses = file.read().splitlines()
+        withdraw_addresses = [wa.strip() for wa in withdraw_addresses]
 
     if len(evm_wallets) > len(proxies):
         logger.error('Proxies count does not match wallets count')
@@ -232,6 +148,8 @@ def main():
         twitters.extend(['' for _ in range(len(evm_wallets) - len(twitters))])
     if len(emails) < len(evm_wallets):
         emails.extend(['' for _ in range(len(evm_wallets) - len(emails))])
+    if len(withdraw_addresses) < len(evm_wallets):
+        withdraw_addresses.extend(['' for _ in range(len(evm_wallets) - len(withdraw_addresses))])
 
     for idx, w in enumerate(evm_wallets, start=1):
         try:
@@ -250,13 +168,13 @@ def main():
     want_only = WANT_ONLY
 
     def get_batches(skip: int = None, threads: int = THREADS_NUM):
-        _data = list(enumerate(list(zip(evm_wallets, proxies, twitters, emails)), start=1))
+        _data = list(enumerate(list(zip(evm_wallets, proxies, twitters, emails, withdraw_addresses)), start=1))
         exclude = []
         if skip is not None:
             _data = _data[skip:]
             _data = [d for d in _data if d[0] not in exclude]
         if skip is not None and len(want_only) > 0:
-            _data = [d for d in enumerate(list(zip(evm_wallets, proxies, twitters, emails)), start=1)
+            _data = [d for d in enumerate(list(zip(evm_wallets, proxies, twitters, emails, withdraw_addresses)), start=1)
                      if d[0] in want_only]
         if RANDOM_ORDER:
             random.shuffle(_data)
@@ -286,8 +204,8 @@ def main():
         logger.info(f'Failed ids: {sorted(failed)}')
         print()
 
-    csv_data = [['#', 'EVM Address', 'Airdrop', 'Volume', 'PNL', 'Portfolio', 'Buys', 'Sells', 'Creates', 'Profile Completed']]
-    total_drop = 0
+    csv_data = [['#', 'EVM Address', 'Airdrop', 'Claimed', 'Zora Balance', 'Volume']]
+    total_drop, total_claimed, total_zora_balance = 0, 0, 0
     for idx, w in enumerate(evm_wallets, start=1):
         evm_address = EthAccount().from_key(w).address
         account = storage.get_final_account_info(evm_address)
@@ -295,14 +213,14 @@ def main():
             csv_data.append([idx, evm_address])
             continue
         total_drop += account.airdrop
+        total_claimed += account.claimed
+        total_zora_balance += account.zora_balance
 
         csv_data.append([idx, evm_address,
-                         round(account.airdrop),
-                         '%.3f' % account.volume, '%.3f' % account.pnl, '%.3f' % account.portfolio,
-                         account.buys, account.sells, account.creates,
-                         account.profile_completed])
+                         round(account.airdrop), round(account.claimed), round(account.zora_balance),
+                         '%.3f' % account.volume])
 
-    csv_data.append(['#', 'EVM Address', 'Airdrop', 'Volume', 'PNL', 'Portfolio', 'Buys', 'Sells', 'Creates', 'Profile Completed'])
+    csv_data.append(['#', 'EVM Address', 'Airdrop', 'Claimed', 'Zora Balance', 'Volume'])
 
     print(tabulate(csv_data, headers='firstrow', tablefmt='fancy_grid'))
 
@@ -314,6 +232,8 @@ def main():
     logger.info('Stats are stored in results/stats.csv')
     print()
     logger.info(f'Total airdrop: {round(total_drop)} $ZORA')
+    logger.info(f'Total claimed: {round(total_claimed)} $ZORA')
+    logger.info(f'Total $ZORA balance: {round(total_zora_balance)} $ZORA')
     print()
 
 

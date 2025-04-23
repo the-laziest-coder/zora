@@ -13,6 +13,7 @@
 /files/evm_keys.txt
 /files/proxies.txt
 /files/twitters.txt
+/files/withdraw_addresses.txt
 
 /storage/*
 !/storage/.gitkeep
