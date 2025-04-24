@@ -5,13 +5,14 @@ import random
 from dataclasses import dataclass
 from loguru import logger
 from web3 import Web3
-from eth_account.messages import encode_typed_data
 import eth_abi
 from eth_abi.packed import encode_packed
+from eth_account.messages import encode_structured_data
 import eth_utils
 
 
-from ..config import BUY_AMOUNT, BUY_FROM_ZORA_CHANCE, MAX_TOP, SELL_PERCENT, SELL_IF_BALANCE_VALUE_GREATER_THAN
+from ..config import (BUY_AMOUNT, BUY_FROM_ZORA_CHANCE, MAX_TOP, SELL_PERCENT,
+                      SELL_IF_BALANCE_VALUE_GREATER_THAN, SWAP_ZORA_TO_ETH)
 from ..email import Email
 from ..models import AccountInfo
 from ..onchain import EVM, CHAIN_IDS, ZERO_ADDRESS, CHAIN_NAMES, SCANS
@@ -743,7 +744,6 @@ class Zora:
         if from_privy:
             signature = Account.sign_typed_data(embedded_pk, full_message=typed_data).signature.hex()
         else:
-            from eth_account.messages import encode_structured_data
             typed_data['types']['EIP712Domain'] = [
                 {'name': 'name', 'type': 'string'},
                 {'name': 'version', 'type': 'string'},
@@ -904,6 +904,66 @@ class Zora:
                     zora_contract.functions.transfer(withdraw_address, zora_balance),
                     action=f'Sending {human_i2d(zora_balance)} $ZORA to withdraw address',
                 )
+            return
+
+        if SWAP_ZORA_TO_ETH:
+            await self._swap_zora_to_eth()
+
+    async def _swap_zora_to_eth(self):
+        async with EVM(self.account, 'Base') as evm:
+            zora = evm.contract(ZORA_TOKEN, erc20=True)
+            balance = await zora.functions.balanceOf(self.account.evm_address).call()
+            tls = TLSClient(self.account, {
+                'origin': 'https://app.odos.xyz',
+                'priority': 'u=1, i',
+                'referer': 'https://app.odos.xyz/',
+            })
+            try:
+                path_id = await tls.post(
+                    'https://api.odos.xyz/sor/quote/v2',
+                    [200], lambda r: r['pathId'],
+                    json={
+                        'chainId': 8453,
+                        'compact': True,
+                        'disableRFQs': False,
+                        'gasPrice': int_to_decimal(await evm.w3.eth.gas_price, 9),
+                        'inputTokens': [{
+                            'amount': str(balance),
+                            'tokenAddress': ZORA_TOKEN,
+                        }],
+                        'likeAsset': True,
+                        'outputTokens': [{
+                            'proportion': 1,
+                            'tokenAddress': ZERO_ADDRESS,
+                        }],
+                        'pathViz': True,
+                        'referralCode': 1,
+                        'slippageLimitPercent': 0.5,
+                        'sourceBlacklist': [],
+                        'userAddr': self.account.evm_address,
+                    },
+                )
+                await evm.approve(
+                    zora,
+                    '0x19cEeAd7105607Cd444F5ad10dd51356436095a1',
+                    balance,
+                    name='ZORA',
+                    infinite=True,
+                )
+                tx, amount_out = await tls.post(
+                    'https://api.odos.xyz/sor/assemble',
+                    [200], lambda r: (r['transaction'], r['simulation']['amountsOut'][0]),
+                    json={
+                        'pathId': path_id,
+                        'simulate': True,
+                        'userAddr': self.account.evm_address,
+                    },
+                )
+                await evm.send_tx(tx, f'Swapping {human_i2d(balance)} $ZORA to {human_i2d(amount_out)} ETH')
+            except Exception as e:
+                raise Exception(f'Swap $ZORA to ETH failed: {e}') from e
+            finally:
+                await tls.close()
 
 
 ENTRYPOINT_ADDRESS = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789'
