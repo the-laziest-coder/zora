@@ -829,7 +829,10 @@ class Zora:
             await wait_a_bit(4)
 
     async def _check_internal_wallets(self):
-        account = await self.client.get_my_account()
+        account = await self.client.get_my_account(can_be_not_found=True)
+        if account is None:
+            self.account.embedded_address = self.client.embedded_wallet
+            return
         if not account.get('smartWallet'):
             logger.info(f'{self.idx}) No smart wallet found. Creating...')
             address = await self.client.create_smart_wallet(8453)
