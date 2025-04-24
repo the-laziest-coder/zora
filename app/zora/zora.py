@@ -897,7 +897,7 @@ class Zora:
                     if smart_wallet is None:
                         logger.error(f'{self.idx}) Smart wallet not found')
                         continue
-                    await self._smart_wallet_claim(smart_wallet, allocation)
+                    await self._smart_wallet_claim(smart_wallet, allocation, from_addr=wallet['walletAddress'])
                 case _:
                     logger.warning(f'{self.idx}) Unknown wallet type: {wallet_type}')
                     continue
