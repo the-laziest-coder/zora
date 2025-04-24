@@ -41,6 +41,8 @@ class AccountInfo:
     airdrop: float = 0
     claimed: float = 0
     zora_balance: float = 0
+    embedded_address: str = ''
+    smart_address: str = ''
 
     def sign_message(self, msg) -> str:
         return EvmAccount().sign_message(encode_defunct(text=msg), self.evm_private_key).signature.hex()

@@ -204,7 +204,8 @@ def main():
         logger.info(f'Failed ids: {sorted(failed)}')
         print()
 
-    csv_data = [['#', 'EVM Address', 'Airdrop', 'Claimed', 'Zora Balance', 'Volume']]
+    csv_data = [['#', 'EVM Address', 'Airdrop', 'Claimed', 'Zora Balance', 'Volume',
+                 'Embedded Address', 'Smart Wallet Address']]
     total_drop, total_claimed, total_zora_balance = 0, 0, 0
     for idx, w in enumerate(evm_wallets, start=1):
         evm_address = EthAccount().from_key(w).address
@@ -218,11 +219,13 @@ def main():
 
         csv_data.append([idx, evm_address,
                          round(account.airdrop), round(account.claimed), round(account.zora_balance),
-                         '%.3f' % account.volume])
+                         '%.3f' % account.volume,
+                         account.embedded_address, account.smart_address])
 
-    csv_data.append(['#', 'EVM Address', 'Airdrop', 'Claimed', 'Zora Balance', 'Volume'])
+    csv_data.append(['#', 'EVM Address', 'Airdrop', 'Claimed', 'Zora Balance', 'Volume',
+                     'Embedded Address', 'Smart Wallet Address'])
 
-    print(tabulate(csv_data, headers='firstrow', tablefmt='fancy_grid'))
+    print(tabulate([row[:-2] if len(row) ==8 else row for row in csv_data], headers='firstrow', tablefmt='fancy_grid'))
 
     with open('results/stats.csv', 'w', encoding='utf-8', newline='') as file:
         writer = csv.writer(file, delimiter=';')

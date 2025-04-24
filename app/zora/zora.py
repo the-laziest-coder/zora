@@ -828,7 +828,21 @@ class Zora:
             await evm.tx_verification(tx_hash, f'Sending {human_i2d(balance)} $ZORA to main wallet')
             await wait_a_bit(4)
 
+    async def _check_internal_wallets(self):
+        account = await self.client.get_my_account()
+        if not account.get('smartWallet'):
+            logger.info(f'{self.idx}) No smart wallet found. Creating...')
+            address = await self.client.create_smart_wallet(8453)
+            await wait_a_bit(10)
+            self.account.smart_address = address
+            logger.info(f'{self.idx}) Created smart wallet: {address}')
+        else:
+            self.account.smart_address = account['smartWallet']['address']
+        self.account.embedded_address = account['embeddedWalletAddress']
+
     async def claim_airdrop(self):
+        await self._check_internal_wallets()
+
         if self.claim_client is None:
             raise Exception('Claim client not defined')
         total_allocation, wallets_allocation = await self.claim_client.airdrop_allocation()
