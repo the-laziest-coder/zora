@@ -952,7 +952,7 @@ class Zora:
                         }],
                         'pathViz': True,
                         'referralCode': 1,
-                        'slippageLimitPercent': 0.5,
+                        'slippageLimitPercent': 3,
                         'sourceBlacklist': [],
                         'userAddr': self.account.evm_address,
                     },
