@@ -885,7 +885,7 @@ class Zora:
             match wallet_type:
                 case 'SMART_WALLET':
                     await self._smart_wallet_claim(wallet, allocation)
-                case 'EXTERNAL':
+                case 'EXTERNAL' | None:
                     async with EVM(self.account, 'Base') as evm:
                         contract = evm.contract(
                             '0x0000000002ba96C69b95E32CAAB8fc38bAB8B3F8',
