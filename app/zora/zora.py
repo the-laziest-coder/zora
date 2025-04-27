@@ -863,7 +863,7 @@ class Zora:
             allocation = wallet['tokens']
             if wallet['claimStatus'] == 'CLAIMED':
                 sent = True
-                if wallet_type != 'EXTERNAL':
+                if wallet_type is not None and wallet_type != 'EXTERNAL':
                     if smart_wallet is None:
                         logger.error(f'{self.idx}) No smart wallet found for some reason, '
                                      f'but {wallet_type} wallet allocation already claimed')
