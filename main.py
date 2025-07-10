@@ -13,7 +13,7 @@ from eth_account import Account as EthAccount
 
 from app.config import (WAIT_BETWEEN_ACCOUNTS, THREADS_NUM, SKIP_FIRST_ACCOUNTS, RANDOM_ORDER, STORE_CREATED,
                         ONLY_CHECK_STATS, COINS, ACTIONS, SETUP_PROFILE, DELAY_BETWEEN_ACTIONS, WANT_ONLY)
-from app.utils import async_retry, wait_a_bit, log_long_exc
+from app.utils import async_retry, wait_a_bit, log_long_exc 
 from app.zora import Zora, ZoraCoin
 from app.models import AccountInfo
 from app.storage import AccountStorage
